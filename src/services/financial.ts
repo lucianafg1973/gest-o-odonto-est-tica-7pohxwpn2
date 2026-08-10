@@ -3,6 +3,7 @@ import pb from '@/lib/pocketbase/client'
 export interface FinancialTransactionRecord {
   id: string
   patient?: string
+  professional?: string
   transaction_type: 'receita' | 'despesa'
   category?:
     | 'consulta'
@@ -27,7 +28,7 @@ export const getFinancialTransactions = (filter?: string) =>
   pb.collection('financial_transactions').getFullList<FinancialTransactionRecord>({
     filter,
     sort: '-transaction_date',
-    expand: 'patient',
+    expand: 'patient,professional',
   })
 
 export const createTransaction = (data: Partial<FinancialTransactionRecord>) =>

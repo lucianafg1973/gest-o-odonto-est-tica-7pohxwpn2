@@ -4,6 +4,7 @@ export interface AppointmentRecord {
   id: string
   patient: string
   procedure?: string
+  professional?: string
   date: string
   start_time: string
   end_time?: string
@@ -12,6 +13,7 @@ export interface AppointmentRecord {
   expand?: {
     patient?: any
     procedure?: any
+    professional?: any
   }
 }
 

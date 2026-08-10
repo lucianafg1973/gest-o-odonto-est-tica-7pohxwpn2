@@ -30,3 +30,11 @@ export async function generateAiReport(summaryData: any) {
     headers: { 'Content-Type': 'application/json' },
   })
 }
+
+export async function getLfgIntelligence() {
+  return pb.send<{ report: string }>('/backend/v1/ai/lfg-intelligence', {
+    method: 'POST',
+    body: JSON.stringify({}),
+    headers: { 'Content-Type': 'application/json' },
+  })
+}
