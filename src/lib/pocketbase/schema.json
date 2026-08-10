@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2026-08-10T20:38:15.163Z",
+  "generatedAt": "2026-08-10T20:50:31.329Z",
   "collections": [
     {
       "name": "users",
@@ -187,6 +187,66 @@
           "required": false,
           "system": false,
           "autodateTriggers": ["onCreate", "onUpdate"]
+        },
+        {
+          "name": "card_fee_percent",
+          "type": "number",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "ir_percent",
+          "type": "number",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "material_cost",
+          "type": "number",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "sales_commission_percent",
+          "type": "number",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "executor_percent",
+          "type": "number",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "rework_cost",
+          "type": "number",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "lab_price",
+          "type": "number",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "manual_price",
+          "type": "number",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "computed_price",
+          "type": "number",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "use_manual_price",
+          "type": "bool",
+          "required": false,
+          "system": false
         }
       ],
       "indexes": []
@@ -1105,6 +1165,64 @@
         "CREATE INDEX idx_implants_marca ON implants (marca)",
         "CREATE INDEX idx_implants_tipo ON implants (tipo)"
       ]
+    },
+    {
+      "name": "clinical_hour_config",
+      "type": "base",
+      "apiRules": {
+        "list": "@request.auth.id != ''",
+        "view": "@request.auth.id != ''",
+        "create": "@request.auth.id != ''",
+        "update": "@request.auth.id != ''",
+        "delete": "@request.auth.id != ''"
+      },
+      "fields": [
+        {
+          "name": "monthly_operating_cost",
+          "type": "number",
+          "required": true,
+          "system": false
+        },
+        {
+          "name": "available_clinical_hours",
+          "type": "number",
+          "required": true,
+          "system": false
+        },
+        {
+          "name": "clinical_hour_value",
+          "type": "number",
+          "required": true,
+          "system": false
+        },
+        {
+          "name": "period",
+          "type": "text",
+          "required": true,
+          "system": false
+        },
+        {
+          "name": "last_updated",
+          "type": "date",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "created",
+          "type": "autodate",
+          "required": false,
+          "system": false,
+          "autodateTriggers": ["onCreate"]
+        },
+        {
+          "name": "updated",
+          "type": "autodate",
+          "required": false,
+          "system": false,
+          "autodateTriggers": ["onCreate", "onUpdate"]
+        }
+      ],
+      "indexes": ["CREATE INDEX idx_chc_period ON clinical_hour_config (period)"]
     }
   ]
 }

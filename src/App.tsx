@@ -21,6 +21,7 @@ import Indicadores from './pages/Indicadores'
 import LfgIntelligence from './pages/LfgIntelligence'
 import BancoImplantes from './pages/BancoImplantes'
 import Configuracoes from './pages/Configuracoes'
+import TabelaPrecos from './pages/TabelaPrecos'
 
 const App = () => (
   <BrowserRouter>
@@ -45,6 +46,7 @@ const App = () => (
               <Route path="/indicadores" element={<Indicadores />} />
               <Route path="/lfg-intelligence" element={<LfgIntelligence />} />
               <Route path="/banco-implantes" element={<BancoImplantes />} />
+              <Route path="/tabela-precos" element={<TabelaPrecos />} />
               <Route path="/configuracoes" element={<Configuracoes />} />
             </Route>
           </Route>
