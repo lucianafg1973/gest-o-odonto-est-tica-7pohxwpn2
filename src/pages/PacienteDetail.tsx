@@ -37,7 +37,7 @@ import { formatCurrency } from '@/lib/price-calculation'
 import { printPlan } from '@/lib/planPrint'
 import { OdontogramNew } from '@/components/planning/OdontogramNew'
 import { FacialPlanning } from '@/components/planning/FacialPlanning'
-import { PaymentInfo, PaymentPlan } from '@/components/planning/PaymentInfo'
+import { PaymentInfo, PaymentPlan, normalizePlan } from '@/components/planning/PaymentInfo'
 import { PlanListBar } from '@/components/planning/PlanListBar'
 import { PdfPreviewModal } from '@/components/documents/PdfPreviewModal'
 import { PatientFormDialog } from '@/components/patients/PatientFormDialog'
@@ -140,15 +140,18 @@ export default function PacienteDetail() {
   /** Carrega um registro de planejamento no editor da aba correspondente. */
   const openPlanInEditor = (plan: VirtualPlanRecord) => {
     const state = loadPlanningState(plan)
+    // normalizePlan converte planos antigos (linha única com N parcelas) em
+    // parcelas individuais em centavos — a lista reaberta segue correta.
+    const payment = normalizePlan({ installments: state.paymentPlan.map(mapPaymentRecord) })
     if ((plan.kind || 'hof') === 'hof') {
       setActiveHofPlan(plan)
       setHoofTreatments(mapTreatmentRecords(state.treatments))
-      setHoofPaymentPlan({ installments: state.paymentPlan.map(mapPaymentRecord) })
+      setHoofPaymentPlan(payment)
       setHofAnnotations(state.annotations ?? null)
     } else {
       setActiveDentalPlan(plan)
       setDentalTreatments(mapTreatmentRecords(state.treatments))
-      setDentalPaymentPlan({ installments: state.paymentPlan.map(mapPaymentRecord) })
+      setDentalPaymentPlan(payment)
     }
   }
 

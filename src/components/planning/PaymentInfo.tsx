@@ -8,8 +8,10 @@ import {
 } from '@/components/ui/select'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
-import { Plus, Trash2, Wand2 } from 'lucide-react'
+import { Card, CardHeader, CardTitle } from '@/components/ui/card'
+import { Trash2 } from 'lucide-react'
+import { formatCurrency as fmtDefault } from '@/lib/price-calculation'
+import { toCents, fromCents, splitCents, conferencia, novoId, addDaysISO } from '@/lib/payment-calc'
 
 export interface PaymentInstallment {
   id: string
@@ -17,9 +19,9 @@ export interface PaymentInstallment {
   kind: 'entrada' | 'parcela'
   method: string
   amount: number
-  /** Data de vencimento preestabelecida (YYYY-MM-DD). */
+  /** Data de vencimento (YYYY-MM-DD). */
   due_date: string
-  /** Nº de parcelas daquele meio (1 = à vista/parcela única). */
+  /** Nº de parcelas daquele meio (1 = parcela única) — mantido por compatibilidade. */
   installments_count?: number
 }
 
@@ -35,264 +37,333 @@ export const PAYMENT_METHODS = [
   { value: 'cartao_debito', label: 'Cartão de Débito' },
 ]
 
-const methodLabel = (v: string) => PAYMENT_METHODS.find((m) => m.value === v)?.label || v
+const todayISO = () => new Date().toISOString().slice(0, 10)
 
-const newId = () => `pi${Date.now()}${Math.random().toString(36).slice(2, 6)}`
-
-const addDaysISO = (base: string, days: number) => {
-  const d = base ? new Date(`${base}T12:00:00`) : new Date()
-  d.setDate(d.getDate() + days)
-  return d.toISOString().slice(0, 10)
-}
-
-const round2 = (n: number) => Math.round(n * 100) / 100
-
-/** Gera um plano padrão: entrada em Pix hoje + 1 parcela em 30 dias. */
-export function defaultPaymentPlan(total: number): PaymentPlan {
-  const today = new Date().toISOString().slice(0, 10)
-  const entrada = total > 0 ? round2(total * 0.3) : 0
-  return {
-    installments: [
-      { id: newId(), kind: 'entrada', method: 'pix', amount: entrada, due_date: today },
-      {
-        id: newId(),
-        kind: 'parcela',
-        method: 'boleto',
-        amount: round2(total - entrada),
-        due_date: addDaysISO(today, 30),
-        installments_count: 1,
-      },
-    ],
+/**
+ * Converte planos salvos em versões antigas (uma única linha com
+ * installments_count = N) em parcelas individuais, preservando valores.
+ * Usada ao REABRIR um planejamento salvo antes desta refatoração.
+ */
+export function normalizePlan(plan: PaymentPlan): PaymentPlan {
+  const out: PaymentInstallment[] = []
+  for (const i of plan.installments || []) {
+    const n = i.kind === 'parcela' ? Math.max(1, i.installments_count ?? 1) : 1
+    if (n === 1) {
+      out.push({ ...i, installments_count: 1 })
+    } else {
+      const valores = splitCents(toCents(i.amount), n)
+      valores.forEach((c, k) =>
+        out.push({
+          id: `${i.id}-${k + 1}`,
+          kind: 'parcela',
+          method: i.method,
+          amount: fromCents(c),
+          due_date: addDaysISO(i.due_date, 30 * k),
+          installments_count: 1,
+        }),
+      )
+    }
   }
-}
-
-/** Distribui um valor total em N parcelas iguais, com vencimentos mensais. */
-function makeInstallments(
-  valorTotal: number,
-  count: number,
-  method: string,
-  firstDueDate: string,
-  intervalDays: number,
-): PaymentInstallment[] {
-  const per = round2(valorTotal / count)
-  // Ajusta a última parcela para absorver centavos de arredondamento
-  const somaAtual = per * (count - 1)
-  const ultima = round2(valorTotal - somaAtual)
-  return Array.from({ length: count }, (_, i) => ({
-    id: newId(),
-    kind: 'parcela' as const,
-    method,
-    amount: i === count - 1 ? ultima : per,
-    due_date: addDaysISO(firstDueDate, intervalDays * i),
-    installments_count: count,
-  }))
+  return { installments: out }
 }
 
 interface Props {
   plan: PaymentPlan
   onPlanChange: (plan: PaymentPlan) => void
+  /** Total do planejamento (reais) — soma dos procedimentos selecionados. */
   total: number
-  formatCurrency: (n: number) => string
+  formatCurrency?: (n: number) => string
   /** Quando o plano está aprovado, todos os campos ficam somente leitura. */
   locked?: boolean
 }
 
-export function PaymentInfo({ plan, onPlanChange, total, formatCurrency, locked = false }: Props) {
+const MAX_PARCELAS = 24
+
+export function PaymentInfo({
+  plan,
+  onPlanChange,
+  total,
+  formatCurrency = fmtDefault,
+  locked = false,
+}: Props) {
+  const fmt = formatCurrency
   const items = plan.installments || []
-  const somaEntradasVis = round2(
-    items.filter((i) => i.kind === 'entrada').reduce((s, i) => s + (i.amount || 0), 0),
-  )
-  const somaParcelasVis = round2(
-    items.filter((i) => i.kind === 'parcela').reduce((s, i) => s + (i.amount || 0), 0),
-  )
-  const diff = round2(total - (somaEntradasVis + somaParcelasVis))
-  const conferido = Math.abs(diff) <= 0.009
+  const totalC = toCents(total)
+  const temProcedimentos = totalC > 0
 
-  const update = (id: string, patch: Partial<PaymentInstallment>) =>
-    onPlanChange({
-      installments: items.map((i) => (i.id === id ? { ...i, ...patch } : i)),
-    })
+  const entradas = items.filter((i) => i.kind === 'entrada')
+  const parcelas = items.filter((i) => i.kind === 'parcela')
+  const entrada = entradas[0]
+  const entradaC = entrada ? toCents(entrada.amount) : 0
+  const saldo = Math.max(0, totalC - entradaC)
+  const somaParcelasC = parcelas.reduce((s, p) => s + toCents(p.amount), 0)
+  const conf = conferencia(plan, total)
 
-  const remove = (id: string) => onPlanChange({ installments: items.filter((i) => i.id !== id) })
+  const setPlan = (installments: PaymentInstallment[]) => onPlanChange({ installments })
 
-  /** Soma atual das entradas — usada para o saldo automático das parcelas. */
-  const somaEntradas = round2(
-    items.filter((i) => i.kind === 'entrada').reduce((s, i) => s + (i.amount || 0), 0),
-  )
-  /** Saldo a financiar: total do orçamento menos as entradas já definidas. */
-  const saldoParcelas = Math.max(0, round2(total - somaEntradas))
+  /** Edita UM campo de UMA parcela — nunca recalcula as demais. */
+  const updateParcela = (id: string, patch: Partial<PaymentInstallment>) =>
+    setPlan(items.map((i) => (i.id === id ? { ...i, ...patch } : i)))
 
   /**
-   * Adiciona uma linha de ENTRADA (o valor é digitado em seguida e, ao digitar,
-   * as parcelas são recalculadas automaticamente).
+   * Entrada: cria/atualiza a linha de entrada e RECALCULA a distribuição
+   * completa do saldo restante entre TODAS as parcelas existentes.
    */
-  const addEntrada = () =>
-    onPlanChange({
-      installments: [
-        ...items,
-        {
-          id: newId(),
-          kind: 'entrada',
-          method: 'pix',
-          amount: 0,
-          due_date: new Date().toISOString().slice(0, 10),
-        },
-      ],
-    })
-
-  /**
-   * Ao definir/editar o valor de uma ENTRADA, preenche automaticamente o valor
-   * da PRIMEIRA linha de parcela com o total menos a entrada (saldo a
-   * financiar). Se ainda não existe linha de parcela, uma é criada já com esse
-   * valor. As parcelas continuam editáveis depois.
-   */
-  const updateEntrada = (id: string, amount: number) => {
-    const proximas = items.map((i) => (i.id === id ? { ...i, amount: Math.max(0, amount) } : i))
-    const novasEntradas = proximas
-      .filter((i) => i.kind === 'entrada')
-      .reduce((s, i) => s + (i.amount || 0), 0)
-    const saldo = Math.max(0, round2(total - novasEntradas))
-    const idxParcela = proximas.findIndex((i) => i.kind === 'parcela')
-    if (idxParcela === -1) {
-      onPlanChange({
-        installments: [
-          ...proximas,
-          {
-            id: newId(),
-            kind: 'parcela',
-            method: 'boleto',
-            amount: saldo,
-            due_date: addDaysISO(new Date().toISOString().slice(0, 10), 30),
-            installments_count: 1,
-          },
-        ],
-      })
+  const onEntradaChange = (valorReais: number) => {
+    if (locked) return
+    const cent = Math.min(Math.max(0, toCents(valorReais)), totalC)
+    const novaEntrada: PaymentInstallment = {
+      id: entrada?.id ?? novoId(),
+      kind: 'entrada',
+      method: entrada?.method || 'pix',
+      amount: fromCents(cent),
+      due_date: entrada?.due_date || todayISO(),
+    }
+    const resto = totalC - cent
+    if (resto <= 0) {
+      // A entrada quitou o total — não há saldo para parcelar.
+      setPlan([novaEntrada])
       return
     }
-    onPlanChange({
-      installments: proximas.map((i, idx) => (idx === idxParcela ? { ...i, amount: saldo } : i)),
-    })
+    if (parcelas.length > 0) {
+      const valores = splitCents(resto, parcelas.length)
+      const novas = parcelas.map((p, i) => ({ ...p, amount: fromCents(valores[i]) }))
+      setPlan([novaEntrada, ...novas])
+    } else {
+      // Sem parcelas ainda — o usuário escolhe o número no seletor abaixo.
+      setPlan([novaEntrada])
+    }
   }
 
-  /** Adiciona uma linha de parcela já preenchida com o saldo (total − entrada). */
-  const addParcela = () =>
-    onPlanChange({
-      installments: [
-        ...items,
-        {
-          id: newId(),
-          kind: 'parcela',
-          method: 'boleto',
-          amount: saldoParcelas,
-          due_date: addDaysISO(new Date().toISOString().slice(0, 10), 30),
-          installments_count: 1,
-        },
-      ],
-    })
+  const removeEntrada = () => {
+    if (locked) return
+    if (parcelas.length > 0) {
+      // Recalcula as parcelas para o total integral (sem entrada).
+      const valores = splitCents(totalC, parcelas.length)
+      const novas = parcelas.map((p, i) => ({ ...p, amount: fromCents(valores[i]) }))
+      setPlan(novas)
+    } else {
+      setPlan([])
+    }
+  }
 
   /**
-   * Ao mudar o Nº de parcelas de uma linha, recalcula o valor de cada parcela
-   * automaticamente (saldo ÷ nº, com ajuste de centavos na última) e substitui
-   * a linha por N parcelas individuais — todas editáveis depois.
+   * ÚNICO seletor de número de parcelas: regenera a lista a partir do saldo,
+   * distribuindo em centavos inteiros (resto na última) — nunca duplica valores.
    */
-  const updateParcelaCount = (id: string, count: number) => {
-    const linha = items.find((i) => i.id === id)
-    if (!linha) return
-    const n = Math.max(1, count)
-    if (n === 1) {
-      update(id, { installments_count: 1 })
+  const onChangeNumParcelas = (n: number) => {
+    if (locked || !temProcedimentos) return
+    if (saldo <= 0) {
+      setPlan(items.filter((i) => i.kind !== 'parcela'))
       return
     }
-    const idx = items.findIndex((i) => i.id === id)
-    const individuais = makeInstallments(linha.amount, n, linha.method, linha.due_date, 30).map(
-      (p) => ({ ...p, installments_count: 1 as const }),
-    )
-    onPlanChange({
-      installments: [...items.slice(0, idx), ...individuais, ...items.slice(idx + 1)],
-    })
+    const count = Math.min(Math.max(1, Math.floor(n)), MAX_PARCELAS)
+    const valores = splitCents(saldo, count)
+    const method = parcelas[0]?.method || 'boleto'
+    const firstDue = parcelas[0]?.due_date || addDaysISO(todayISO(), 30)
+    const novas: PaymentInstallment[] = valores.map((c, i) => ({
+      id: parcelas[i]?.id ?? novoId(),
+      kind: 'parcela',
+      method,
+      amount: fromCents(c),
+      due_date: addDaysISO(firstDue, 30 * i),
+      installments_count: 1,
+    }))
+    setPlan([...entradas, ...novas])
   }
+
+  /** Forma padrão: aplica o meio escolhido a todas as parcelas de uma vez. */
+  const onChangeFormaPadrao = (v: string) =>
+    setPlan(items.map((i) => (i.kind === 'parcela' ? { ...i, method: v } : i)))
+
+  const removeParcela = (id: string) => setPlan(items.filter((i) => i.id !== id))
+
+  const nParcelas = parcelas.length
+  const formaPadrao = parcelas[0]?.method || 'boleto'
+  const seloOk = conf.ok
+  const temPlano = !!entrada || parcelas.length > 0
 
   return (
     <Card className="card-warm p-4 space-y-3">
       <CardHeader className="p-0 pb-1">
         <CardTitle className="font-serif-title text-base text-[#2D1B14]">
-          Forma de Pagamento (com ou sem entrada)
+          Condições de Pagamento
         </CardTitle>
       </CardHeader>
-      <p className="text-[11px] text-[#6B4F42]">
-        Ao definir a entrada, o valor das parcelas é preenchido automaticamente com o total menos a
-        entrada. Ao informar o nº de parcelas, o valor de cada uma é calculado sozinho — e continua
-        editável depois.
-      </p>
 
-      {!locked && (
-        <div className="flex gap-2">
-          <Button
-            size="sm"
-            type="button"
-            variant="outline"
-            className="text-xs"
-            onClick={addEntrada}
-            disabled={locked}
-          >
-            <Plus className="w-3.5 h-3.5 mr-1" /> Entrada
-          </Button>
-          <Button
-            size="sm"
-            type="button"
-            variant="outline"
-            className="text-xs"
-            onClick={addParcela}
-            disabled={locked}
-          >
-            <Plus className="w-3.5 h-3.5 mr-1" /> Parcela
-          </Button>
+      {/* 1 · Valor total do planejamento */}
+      <div className="flex flex-wrap items-center justify-between gap-2 bg-white border border-[#EDE3D8] rounded-xl p-3">
+        <div>
+          <Label className="text-[10px] font-semibold text-[#6B4F42]">
+            Valor total do planejamento
+          </Label>
+          <p className="text-lg font-bold text-[#C66B4D] leading-tight">{fmt(total)}</p>
+          <p className="text-[10px] text-[#6B4F42]">
+            Calculado automaticamente a partir dos procedimentos selecionados.
+          </p>
         </div>
+      </div>
+      {!temProcedimentos && (
+        <p className="text-xs text-amber-800 bg-amber-50 border border-amber-200 rounded-lg p-2">
+          Não há procedimentos com valor neste planejamento (ou os preços estão zerados). Adicione
+          tratamentos com valor — o parcelamento fica disponível assim que o total for maior que
+          zero.
+        </p>
       )}
 
-      {items.length === 0 && (
-        <p className="text-[11px] text-[#6B4F42]">Nenhuma condição de pagamento adicionada.</p>
-      )}
-
-      <div className="space-y-2">
-        {items.map((i) => {
-          const isEntrada = i.kind === 'entrada'
-          return (
-            <div
-              key={i.id}
-              className={`grid grid-cols-2 sm:grid-cols-14 gap-2 items-end bg-white border rounded-xl p-2 ${
-                isEntrada ? 'border-[#D4AF37]' : 'border-[#EDE3D8]'
-              }`}
-            >
-              {/* Tipo (Entrada/Parcela) — apenas rótulo visual + seleção */}
-              <div className="sm:col-span-2 space-y-1">
-                <Label className="text-[10px] font-semibold">Tipo</Label>
-                <Select
-                  value={i.kind}
-                  disabled={locked}
-                  onValueChange={(v) => update(i.id, { kind: v as 'entrada' | 'parcela' })}
+      {/* 2 · Entrada opcional + 3 · Forma de pagamento da entrada */}
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+        <div className="space-y-1">
+          <Label className="text-[10px] font-semibold">Entrada (opcional)</Label>
+          <Input
+            type="number"
+            min={0}
+            max={total || undefined}
+            step="0.01"
+            placeholder="Sem entrada"
+            value={entrada?.amount ?? ''}
+            disabled={locked || !temProcedimentos}
+            onChange={(e) => onEntradaChange(Number(e.target.value) || 0)}
+            className="text-xs"
+          />
+        </div>
+        <div className="space-y-1">
+          <Label className="text-[10px] font-semibold">Forma de pagamento da entrada</Label>
+          {entrada ? (
+            <div className="flex items-center gap-2">
+              <Select
+                value={entrada.method || 'pix'}
+                disabled={locked}
+                onValueChange={(v) =>
+                  setPlan(items.map((i) => (i.kind === 'entrada' ? { ...i, method: v } : i)))
+                }
+              >
+                <SelectTrigger className="w-full bg-white text-xs">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  {PAYMENT_METHODS.map((m) => (
+                    <SelectItem key={m.value} value={m.value} className="text-xs">
+                      {m.label}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              {!locked && (
+                <Button
+                  size="sm"
+                  type="button"
+                  variant="ghost"
+                  className="w-8 h-8 p-0 text-red-600 hover:bg-red-50 shrink-0"
+                  onClick={removeEntrada}
+                  title="Remover entrada"
                 >
-                  <SelectTrigger className="w-full bg-white text-xs">
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="entrada" className="text-xs">
-                      Entrada
-                    </SelectItem>
-                    <SelectItem value="parcela" className="text-xs">
-                      Parcela
-                    </SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
+                  <Trash2 className="w-3.5 h-3.5" />
+                </Button>
+              )}
+            </div>
+          ) : (
+            <p className="text-[11px] text-[#6B4F42] pt-2">
+              Sem entrada — o valor total será financiado em parcelas.
+            </p>
+          )}
+        </div>
+      </div>
 
-              {/* Meio (Pix, cartão, boleto...) — editável em qualquer linha */}
+      {/* 4 · Saldo restante */}
+      <div className="flex items-center justify-between bg-white border border-[#EDE3D8] rounded-xl px-3 py-2">
+        <Label className="text-[10px] font-semibold text-[#6B4F42]">
+          Saldo restante a parcelar
+        </Label>
+        <p className="text-sm font-bold text-[#2D1B14]">{fmt(fromCents(saldo))}</p>
+      </div>
+
+      {/* 5 · Número de parcelas (seletor único) + 6 · Forma padrão */}
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+        <div className="space-y-1">
+          <Label className="text-[10px] font-semibold">Número de parcelas</Label>
+          <Select
+            value={String(nParcelas || '')}
+            disabled={locked || !temProcedimentos || saldo <= 0}
+            onValueChange={(v) => onChangeNumParcelas(Number(v))}
+          >
+            <SelectTrigger className="w-full bg-white text-xs">
+              <SelectValue placeholder={saldo <= 0 ? '—' : 'Selecione'} />
+            </SelectTrigger>
+            <SelectContent>
+              {Array.from({ length: MAX_PARCELAS }, (_, i) => i + 1).map((n) => (
+                <SelectItem key={n} value={String(n)} className="text-xs">
+                  {n}x — {fmt(fromCents(saldo) / n)}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </div>
+        <div className="space-y-1">
+          <Label className="text-[10px] font-semibold">
+            Forma de pagamento padrão das parcelas
+          </Label>
+          <Select
+            value={formaPadrao}
+            disabled={locked || parcelas.length === 0}
+            onValueChange={onChangeFormaPadrao}
+          >
+            <SelectTrigger className="w-full bg-white text-xs">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              {PAYMENT_METHODS.map((m) => (
+                <SelectItem key={m.value} value={m.value} className="text-xs">
+                  {m.label}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </div>
+      </div>
+
+      {/* 7 · Lista de parcelas — editáveis individualmente */}
+      {parcelas.length > 0 && (
+        <div className="space-y-2">
+          <Label className="text-[10px] font-semibold text-[#6B4F42]">
+            Parcelas — valor, vencimento e modalidade editáveis individualmente
+          </Label>
+          {parcelas.map((p, idx) => (
+            <div
+              key={p.id}
+              className="grid grid-cols-2 sm:grid-cols-12 gap-2 items-end bg-white border border-[#EDE3D8] rounded-xl p-2"
+            >
+              <div className="sm:col-span-1 flex items-center h-9 text-xs font-bold text-[#C66B4D]">
+                {idx + 1}ª
+              </div>
               <div className="sm:col-span-3 space-y-1">
-                <Label className="text-[10px] font-semibold">Meio</Label>
-                <Select
-                  value={i.method}
+                <Label className="text-[10px] font-semibold">Valor (R$)</Label>
+                <Input
+                  type="number"
+                  min={0}
+                  step="0.01"
+                  value={p.amount}
                   disabled={locked}
-                  onValueChange={(v) => update(i.id, { method: v })}
+                  onChange={(e) => updateParcela(p.id, { amount: Number(e.target.value) || 0 })}
+                  className="text-xs"
+                />
+              </div>
+              <div className="sm:col-span-3 space-y-1">
+                <Label className="text-[10px] font-semibold">Vencimento</Label>
+                <Input
+                  type="date"
+                  value={p.due_date}
+                  disabled={locked}
+                  onChange={(e) => updateParcela(p.id, { due_date: e.target.value })}
+                  className="text-xs"
+                />
+              </div>
+              <div className="sm:col-span-4 space-y-1">
+                <Label className="text-[10px] font-semibold">Modalidade</Label>
+                <Select
+                  value={p.method}
+                  disabled={locked}
+                  onValueChange={(v) => updateParcela(p.id, { method: v })}
                 >
                   <SelectTrigger className="w-full bg-white text-xs">
                     <SelectValue placeholder="Selecione" />
@@ -306,192 +377,50 @@ export function PaymentInfo({ plan, onPlanChange, total, formatCurrency, locked 
                   </SelectContent>
                 </Select>
               </div>
-
-              {/* ENTRADA: valor direto + data da entrada */}
-              {isEntrada ? (
-                <>
-                  <div className="sm:col-span-2 space-y-1">
-                    <Label className="text-[10px] font-semibold">Valor da entrada (R$)</Label>
-                    <Input
-                      type="number"
-                      min={0}
-                      step="0.01"
-                      value={i.amount}
-                      disabled={locked}
-                      onChange={(e) => updateEntrada(i.id, Number(e.target.value))}
-                      className="text-xs"
-                    />
-                  </div>
-                  <div className="sm:col-span-3 space-y-1">
-                    <Label className="text-[10px] font-semibold">Data da entrada</Label>
-                    <Input
-                      type="date"
-                      value={i.due_date}
-                      disabled={locked}
-                      onChange={(e) => update(i.id, { due_date: e.target.value })}
-                      className="text-xs"
-                    />
-                  </div>
-                  <div className="sm:col-span-4 flex items-end justify-end gap-1">
-                    {!locked && (
-                      <Button
-                        size="sm"
-                        type="button"
-                        variant="ghost"
-                        className="w-8 h-8 p-0 text-red-600 hover:bg-red-50"
-                        onClick={() => remove(i.id)}
-                        title="Remover entrada"
-                      >
-                        <Trash2 className="w-3.5 h-3.5" />
-                      </Button>
-                    )}
-                  </div>
-                </>
-              ) : (
-                /* PARCELA: informar VALOR TOTAL + Nº — sistema calcula cada parcela */
-                <>
-                  <div className="sm:col-span-2 space-y-1">
-                    <Label className="text-[10px] font-semibold">Valor total (R$)</Label>
-                    <Input
-                      type="number"
-                      min={0}
-                      step="0.01"
-                      value={i.amount}
-                      disabled={locked}
-                      onChange={(e) => update(i.id, { amount: Number(e.target.value) })}
-                      className="text-xs"
-                    />
-                  </div>
-                  <div className="sm:col-span-2 space-y-1">
-                    <Label className="text-[10px] font-semibold">Nº de parcelas</Label>
-                    <Input
-                      type="number"
-                      min={1}
-                      step={1}
-                      value={i.installments_count ?? 1}
-                      disabled={locked}
-                      onChange={(e) => updateParcelaCount(i.id, Number(e.target.value) || 1)}
-                      className="text-xs"
-                    />
-                  </div>
-                  <div className="sm:col-span-3 space-y-1">
-                    <Label className="text-[10px] font-semibold">Vencimento (1ª)</Label>
-                    <Input
-                      type="date"
-                      value={i.due_date}
-                      disabled={locked}
-                      onChange={(e) => update(i.id, { due_date: e.target.value })}
-                      className="text-xs"
-                    />
-                  </div>
-                  <div className="sm:col-span-4 flex items-end justify-end gap-1">
-                    {(i.installments_count ?? 1) > 1 && (
-                      <div className="text-right mr-1">
-                        <Label className="text-[9px] font-semibold block text-[#6B4F42]">
-                          Cada parcela
-                        </Label>
-                        <span className="text-[11px] font-bold text-[#C66B4D]">
-                          {formatCurrency(round2(i.amount / (i.installments_count ?? 1)))}
-                        </span>
-                      </div>
-                    )}
-                    {!locked && (
-                      <Button
-                        size="sm"
-                        type="button"
-                        variant="ghost"
-                        className="w-8 h-8 p-0 text-red-600 hover:bg-red-50"
-                        onClick={() => remove(i.id)}
-                        title="Remover parcela"
-                      >
-                        <Trash2 className="w-3.5 h-3.5" />
-                      </Button>
-                    )}
-                  </div>
-                </>
-              )}
+              <div className="sm:col-span-1 flex justify-end">
+                {!locked && (
+                  <Button
+                    size="sm"
+                    type="button"
+                    variant="ghost"
+                    className="w-8 h-8 p-0 text-red-600 hover:bg-red-50"
+                    onClick={() => removeParcela(p.id)}
+                    title="Remover parcela"
+                  >
+                    <Trash2 className="w-3.5 h-3.5" />
+                  </Button>
+                )}
+              </div>
             </div>
-          )
-        })}
-      </div>
-
-      {/* Botão que gera as parcelas individuais a partir da linha informada */}
-      {!locked && items.some((i) => i.kind === 'parcela' && (i.installments_count ?? 1) > 1) && (
-        <div className="flex justify-end">
-          <Button
-            size="sm"
-            type="button"
-            className="btn-terracotta-gold text-xs"
-            onClick={() => {
-              // Para cada linha de parcela com N>1, substitui por N parcelas individuais
-              const novas: PaymentInstallment[] = []
-              items.forEach((i) => {
-                const n = i.kind === 'parcela' ? (i.installments_count ?? 1) : 1
-                if (n <= 1) {
-                  novas.push(i)
-                } else {
-                  novas.push(
-                    ...makeInstallments(i.amount, n, i.method, i.due_date, 30).map((p) => ({
-                      ...p,
-                      installments_count: 1,
-                    })),
-                  )
-                }
-              })
-              onPlanChange({ installments: novas })
-            }}
-          >
-            <Wand2 className="w-3.5 h-3.5 mr-1" /> Gerar parcelas individuais
-          </Button>
+          ))}
         </div>
       )}
+      {!temPlano && temProcedimentos && (
+        <p className="text-[11px] text-[#6B4F42]">
+          Defina uma entrada (opcional) e o número de parcelas — os valores são calculados
+          automaticamente.
+        </p>
+      )}
 
+      {/* 8 · Conferência automática */}
       <div className="flex flex-wrap justify-end items-center gap-3 border-t border-[#EDE3D8] pt-2 text-xs">
         <span className="text-[#6B4F42]">
-          Entrada: <strong className="text-[#2D1B14]">{formatCurrency(somaEntradasVis)}</strong>
+          Entrada: <strong className="text-[#2D1B14]">{fmt(entrada ? entrada.amount : 0)}</strong>
         </span>
         <span className="text-[#6B4F42]">
-          Parcelas: <strong className="text-[#2D1B14]">{formatCurrency(somaParcelasVis)}</strong>
-        </span>
-        <span className="text-[#6B4F42]">
-          Total contratado: <strong className="text-[#C66B4D]">{formatCurrency(total)}</strong>
+          Parcelas ({nParcelas}):{' '}
+          <strong className="text-[#2D1B14]">{fmt(fromCents(somaParcelasC))}</strong>
         </span>
         <span
           className={`px-2 py-0.5 rounded-full font-semibold ${
-            conferido ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'
+            seloOk ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'
           }`}
         >
-          {conferido
+          {seloOk
             ? '✓ Conferido: entrada + parcelas = total'
-            : `Diferença de ${formatCurrency(Math.abs(diff))} ${
-                diff > 0 ? '(faltam)' : '(excedem)'
-              }`}
+            : `Diferença de ${fmt(Math.abs(conf.diffCents) / 100)} (${conf.direcao})`}
         </span>
       </div>
-      <p className="text-[10px] text-[#6B4F42]">
-        Resumo: {items.filter((i) => i.kind === 'entrada').length} entrada(s) ·{' '}
-        {items.reduce((s, i) => s + (i.kind === 'parcela' ? (i.installments_count ?? 1) : 1), 0)}{' '}
-        parcela(s) —{' '}
-        {items
-          .map(
-            (i) =>
-              `${methodLabel(i.method)}${
-                i.kind === 'parcela' && (i.installments_count ?? 1) > 1
-                  ? ` ${i.installments_count}x`
-                  : ''
-              }`,
-          )
-          .join(' + ') || '—'}
-      </p>
     </Card>
   )
-}
-
-/** Distribui um valor em N parcelas iguais, com ajuste de centavos na última. */
-export function splitIntoInstallments(valor: number, count: number): number[] {
-  const n = Math.max(1, Math.floor(count))
-  const per = round2(valor / n)
-  const somaAtual = per * (n - 1)
-  const ultima = round2(valor - somaAtual)
-  return Array.from({ length: n }, (_, i) => (i === n - 1 ? ultima : per))
 }
