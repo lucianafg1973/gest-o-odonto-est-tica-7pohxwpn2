@@ -13,14 +13,20 @@ import {
   getImageUrl,
   ImageRecord,
 } from '@/services/images'
-import { getVirtualPlans, VirtualPlanRecord } from '@/services/virtual_plans'
+import {
+  getVirtualPlans,
+  VirtualPlanRecord,
+  loadPlanningState,
+  savePlanningState,
+  TreatmentItemRecord,
+  PaymentInstallmentRecord,
+} from '@/services/virtual_plans'
 import { getDocuments, DocumentRecord } from '@/services/documents'
 import { getFinancialTransactions, FinancialTransactionRecord } from '@/services/financial'
 import { getMessagesByPatient, MessageRecord } from '@/services/messages'
 import { getProcedures } from '@/services/procedures'
 import { ProcedureRecord } from '@/services/procedures'
 import { formatCurrency } from '@/lib/price-calculation'
-import { CanvasAnnotator } from '@/components/virtual-planning/CanvasAnnotator'
 import { OdontogramNew } from '@/components/planning/OdontogramNew'
 import { FacialPlanning } from '@/components/planning/FacialPlanning'
 import { PaymentInfo, PaymentPlan } from '@/components/planning/PaymentInfo'
@@ -71,7 +77,9 @@ export default function PacienteDetail() {
   const [plans, setPlans] = useState<VirtualPlanRecord[]>([])
   const [documents, setDocuments] = useState<DocumentRecord[]>([])
   const [transactions, setTransactions] = useState<FinancialTransactionRecord[]>([])
-  const [messages] = useState<MessageRecord[]>([])
+  const [messages, setMessages] = useState<MessageRecord[]>([])
+  const [hofPlanRecord, setHofPlanRecord] = useState<VirtualPlanRecord | null>(null)
+  const [dentalPlanRecord, setDentalPlanRecord] = useState<VirtualPlanRecord | null>(null)
   const [procedures, setProcedures] = useState<ProcedureRecord[]>([])
 
   const [anamnesis, setAnamnesis] = useState('')
@@ -90,6 +98,73 @@ export default function PacienteDetail() {
   const [hoofPaymentPlan, setHoofPaymentPlan] = useState<PaymentPlan>({ installments: [] })
   const [dentalPaymentPlan, setDentalPaymentPlan] = useState<PaymentPlan>({ installments: [] })
 
+  // Converte os registros persistidos (JSON em virtual_plans) para o formato dos componentes
+  const mapTreatmentRecords = (recs: TreatmentItemRecord[]): PlannedTreatment[] =>
+    (recs || []).map((r) => ({
+      id: r.id,
+      procedureId: r.procedureId,
+      procedureName: r.procedureName,
+      tooth: r.tooth || '',
+      region: r.region || '',
+      faces: r.faces || [],
+      price: r.price || 0,
+    }))
+
+  const mapPaymentRecord = (r: PaymentInstallmentRecord): PaymentPlan['installments'][number] => ({
+    id: r.id,
+    kind: r.kind,
+    method: r.method,
+    amount: r.amount || 0,
+    due_date: r.due_date || '',
+    installments_count: r.installments_count ?? 1,
+  })
+
+  // Persistência (debounce simples por campo) dos planejamentos HOF e Odontológico
+  const saveTimer = useRef<Record<string, ReturnType<typeof setTimeout>>>({})
+
+  const persistPlanning = (
+    kind: 'hof' | 'odontologico',
+    record: VirtualPlanRecord | null,
+    treatments: PlannedTreatment[],
+    paymentPlan: PaymentPlan,
+  ) => {
+    if (!record) return
+    const key = kind
+    if (saveTimer.current[key]) clearTimeout(saveTimer.current[key])
+    saveTimer.current[key] = setTimeout(() => {
+      savePlanningState(record, {
+        treatments: treatments.map((t) => ({
+          id: t.id,
+          procedureId: t.procedureId,
+          procedureName: t.procedureName,
+          tooth: t.tooth,
+          region: t.region,
+          faces: t.faces,
+          price: t.price,
+        })),
+        paymentPlan: paymentPlan.installments.map((i) => ({
+          id: i.id,
+          kind: i.kind,
+          method: i.method,
+          amount: i.amount,
+          due_date: i.due_date,
+          installments_count: i.installments_count ?? 1,
+        })),
+      }).catch(() => {
+        /* silencioso — o usuário continua editando; estado local preservado */
+      })
+    }, 600)
+  }
+
+  // Salvamento automático sempre que os tratamentos ou o plano mudarem
+  useEffect(() => {
+    persistPlanning('hof', hofPlanRecord, hoofTreatments, hoofPaymentPlan)
+  }, [hoofTreatments, hoofPaymentPlan, hofPlanRecord])
+
+  useEffect(() => {
+    persistPlanning('odontologico', dentalPlanRecord, dentalTreatments, dentalPaymentPlan)
+  }, [dentalTreatments, dentalPaymentPlan, dentalPlanRecord])
+
   const loadAllData = async () => {
     if (!id) return
     try {
@@ -106,6 +181,25 @@ export default function PacienteDetail() {
       const trans = await getFinancialTransactions(`patient="${id}"`)
       setTransactions(trans)
       setProcedures(await getProcedures())
+      // Histórico completo de mensagens (inclui cobranças e lembretes enviados)
+      setMessages(await getMessagesByPatient(id))
+      // Planejamentos persistidos (HOF e Odontológico)
+      const [hofPlan, dentPlan] = await Promise.all([
+        loadPlanningState(id, 'hof').catch(() => null),
+        loadPlanningState(id, 'odontologico').catch(() => null),
+      ])
+      if (hofPlan) {
+        setHofPlanRecord(hofPlan.plan)
+        setHoofTreatments(mapTreatmentRecords(hofPlan.state.treatments))
+        setHoofPaymentPlan({ installments: hofPlan.state.paymentPlan.map(mapPaymentRecord) })
+      }
+      if (dentPlan) {
+        setDentalPlanRecord(dentPlan.plan)
+        setDentalTreatments(mapTreatmentRecords(dentPlan.state.treatments))
+        setDentalPaymentPlan({
+          installments: dentPlan.state.paymentPlan.map(mapPaymentRecord),
+        })
+      }
     } catch {
       /* intentionally ignored */
     }
@@ -379,39 +473,20 @@ export default function PacienteDetail() {
 
           <TabsContent value="planejamento" className="mt-4 space-y-6">
             <p className="text-xs text-[#6B4F42] bg-white border border-[#EDE3D8] rounded-xl p-3">
-              Clique em uma região da <strong>face ou do pescoço</strong> para planejar os
-              procedimentos de harmonização (sem odontograma). Para anotar sobre uma foto do
-              paciente, use a aba &quot;Fotografias e Radiografias&quot;.
+              Desenhe/anote livremente sobre a foto abaixo e insira os procedimentos na &quot;tabela
+              de procedimentos&quot; (sem áreas clicáveis sobre a foto; sem odontograma). Para usar
+              outra foto, selecione-a na aba &quot;Fotografias e Radiografias&quot;.
             </p>
             <FacialPlanning
               procedures={procedures}
               items={hoofTreatments}
               onChange={setHoofTreatments}
-              patientPhotoUrl={getPatientPhotoUrl(patient)}
+              patientPhotoUrl={
+                selectedImageForPlan
+                  ? getImageUrl(selectedImageForPlan)
+                  : getPatientPhotoUrl(patient)
+              }
             />
-            {selectedImageForPlan ? (
-              <Card className="card-warm p-4 space-y-4">
-                <div className="flex justify-between items-center">
-                  <h3 className="font-serif-title text-base font-bold text-[#2D1B14]">
-                    Edição do Planejamento HOF
-                  </h3>
-                  <Button size="sm" variant="ghost" onClick={() => setSelectedImageForPlan(null)}>
-                    Voltar à Galeria
-                  </Button>
-                </div>
-                <CanvasAnnotator
-                  imageUrl={getImageUrl(selectedImageForPlan)}
-                  onSave={async () => {
-                    toast({ title: 'Planejamento HOF salvo com sucesso!' })
-                  }}
-                />
-              </Card>
-            ) : (
-              <p className="text-xs text-[#6B4F42] py-8 text-center bg-white border rounded-xl">
-                Selecione uma foto na aba &quot;Fotografias e Radiografias&quot; para iniciar o
-                desenho técnico de planejamento HOF.
-              </p>
-            )}
             <PaymentInfo
               plan={hoofPaymentPlan}
               onPlanChange={setHoofPaymentPlan}
@@ -465,6 +540,7 @@ export default function PacienteDetail() {
           <TabsContent value="financeiro" className="mt-4">
             <FinanceiroTab
               transactions={transactions}
+              messages={messages}
               patientName={patient.name}
               patientPhone={patient.phone}
               onRefresh={loadAllData}

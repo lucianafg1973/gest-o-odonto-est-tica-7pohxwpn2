@@ -1,5 +1,5 @@
 import { FinancialTransactionRecord, updateTransaction } from '@/services/financial'
-import { createMessageRecord } from '@/services/messages'
+import { createMessageRecord, MessageRecord } from '@/services/messages'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
@@ -11,11 +11,14 @@ import {
   BellRing,
   CheckCircle2,
   Clock,
+  History,
 } from 'lucide-react'
 import { toast } from '@/hooks/use-toast'
 
 interface Props {
   transactions: FinancialTransactionRecord[]
+  /** Histórico completo de mensagens (inclui cobranças e lembretes enviados). */
+  messages?: MessageRecord[]
   patientName: string
   patientPhone?: string
   onRefresh: () => void
@@ -53,7 +56,13 @@ function openWhatsApp(phone: string, text: string) {
   window.open(`https://wa.me/55${digits}?text=${encodeURIComponent(text)}`, '_blank')
 }
 
-export function FinanceiroTab({ transactions, patientName, patientPhone, onRefresh }: Props) {
+export function FinanceiroTab({
+  transactions,
+  messages = [],
+  patientName,
+  patientPhone,
+  onRefresh,
+}: Props) {
   const receitas = transactions
     .filter((t) => t.transaction_type === 'receita')
     .reduce((s, t) => s + (t.amount || 0), 0)
@@ -155,8 +164,11 @@ export function FinanceiroTab({ transactions, patientName, patientPhone, onRefre
       <Card className="card-warm">
         <CardHeader className="border-b border-[#EDE3D8] pb-3">
           <CardTitle className="font-serif-title text-base text-[#2D1B14]">
-            Transações e Parcelas do Paciente
+            Histórico Completo — Transações e Parcelas ({transactions.length})
           </CardTitle>
+          <p className="text-[11px] text-[#6B4F42]">
+            Todas as transações e parcelas do paciente, pagas e pendentes.
+          </p>
         </CardHeader>
         <CardContent className="pt-4 space-y-2">
           {transactions.length === 0 ? (
@@ -249,6 +261,41 @@ export function FinanceiroTab({ transactions, patientName, patientPhone, onRefre
           )}
         </CardContent>
       </Card>
+
+      {messages.length > 0 && (
+        <Card className="card-warm">
+          <CardHeader className="border-b border-[#EDE3D8] pb-3">
+            <CardTitle className="font-serif-title text-base text-[#2D1B14] flex items-center gap-2">
+              <History className="w-4 h-4 text-[#C66B4D]" /> Histórico de Mensagens (
+              {messages.length})
+            </CardTitle>
+          </CardHeader>
+          <CardContent className="pt-4 space-y-2">
+            {messages.map((m) => (
+              <div
+                key={m.id}
+                className="bg-[#FAF6F0] p-3 rounded-xl border border-[#EDE3D8] text-xs"
+              >
+                <div className="flex justify-between items-center gap-2 mb-1">
+                  <Badge className="bg-[#2D1B14] text-white text-[9px] px-1.5">
+                    {m.message_type === 'lembrete_consulta'
+                      ? 'Lembrete'
+                      : m.message_type === 'informativo'
+                        ? 'Cobrança / Informativo'
+                        : m.message_type === 'antes_preparatorio'
+                          ? 'Pré-operatório'
+                          : 'Pós-operatório'}
+                  </Badge>
+                  <span className="text-[10px] text-[#6B4F42]">
+                    {new Date(m.sent_date || m.created).toLocaleString('pt-BR')}
+                  </span>
+                </div>
+                {m.content && <p className="text-[#2D1B14] whitespace-pre-wrap">{m.content}</p>}
+              </div>
+            ))}
+          </CardContent>
+        </Card>
+      )}
     </div>
   )
 }

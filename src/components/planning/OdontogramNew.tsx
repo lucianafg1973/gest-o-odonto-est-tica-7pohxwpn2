@@ -49,35 +49,101 @@ const TOOTH_COLORS = {
 
 type ToothColorKey = keyof typeof TOOTH_COLORS
 
-function ToothShape({ n, color, onClick }: { n: number; color: string; onClick: () => void }) {
-  const isUpper = n < 40 || (n >= 50 && n < 80)
-  const stroke = color === TOOTH_COLORS.none ? '#C9B8A8' : color
-  const fill = color === TOOTH_COLORS.none ? '#FFFFFF' : `${color}33`
+// Desenho de um dente (coroa + duas raízes), em coordenadas locais: raízes no
+// topo (y=0), coroa na base (y~26). Rotacionado/posicionado ao longo da arcada.
+const TOOTH_PATH =
+  'M -3 0 Q 0 7 3 0 Q 8 6 8 13 Q 8 20 5 25 Q 2 28 0 25 Q -2 28 -5 25 Q -8 20 -8 13 Q -8 6 -3 0 Z'
+
+function toothFill(color: string) {
+  return color === TOOTH_COLORS.none ? '#FFFFFF' : `${color}55`
+}
+
+function toothStroke(color: string) {
+  return color === TOOTH_COLORS.none ? '#C9B8A8' : color
+}
+
+/**
+ * Uma arcada dentária em SVG: os dentes são desenhados (coroa + raízes) e
+ * posicionados ao longo de um arco, rotacionados apontando para o centro da
+ * boca — arcada superior (coroas para baixo) e inferior (coroas para cima).
+ */
+function ArchSvg({
+  teeth,
+  isUpper,
+  deciduous = false,
+  colorFor,
+  onToothClick,
+}: {
+  teeth: number[]
+  isUpper: boolean
+  deciduous?: boolean
+  colorFor: (n: number) => string
+  onToothClick: (n: number) => void
+}) {
+  const total = teeth.length
+  const spread = deciduous ? 118 : 150 // abertura do arco em graus
+  const R = deciduous ? 96 : 136 // raio horizontal do arco
+  const Ry = deciduous ? 46 : 60 // raio vertical do arco
+  const scale = deciduous ? 0.78 : 1
+  const width = 320
+  const cx = width / 2
+  const yBase = isUpper ? 106 : 22
+  const height = 132
+
   return (
-    <button
-      type="button"
-      onClick={onClick}
-      className="group flex flex-col items-center gap-0.5 focus:outline-none"
-      title={`Dente ${n}`}
+    <svg
+      viewBox={`0 0 ${width} ${height}`}
+      className="w-full max-w-2xl mx-auto"
+      role="img"
+      aria-label={isUpper ? 'Arcada dentária superior' : 'Arcada dentária inferior'}
     >
-      <svg viewBox="0 0 20 26" className="w-6 h-7">
-        {/* crown */}
-        <path
-          d={
-            isUpper
-              ? 'M4 2 Q10 -1 16 2 Q18 6 16 11 Q10 13 4 11 Q2 6 4 2 Z'
-              : 'M5 15 Q10 13 15 15 Q17 20 14 24 Q10 26 6 24 Q3 20 5 15 Z'
-          }
-          fill={fill}
-          stroke={stroke}
-          strokeWidth="1.4"
-        />
-        {isUpper && <path d="M4 11 Q10 13 16 11" fill="none" stroke={stroke} strokeWidth="1" />}
-      </svg>
-      <span className="text-[8px] font-semibold text-[#6B4F42] group-hover:text-[#C66B4D]">
-        {n}
-      </span>
-    </button>
+      {teeth.map((n, i) => {
+        const phi = ((-spread / 2 + (spread * i) / (total - 1)) * Math.PI) / 180
+        const x = cx + R * Math.sin(phi)
+        const y = isUpper ? yBase - Ry * Math.cos(phi) : yBase + Ry * Math.cos(phi)
+        const rot = (phi * 180) / Math.PI + (isUpper ? 0 : 180)
+        const color = colorFor(n)
+        return (
+          <g
+            key={n}
+            transform={`translate(${x} ${y}) rotate(${rot}) scale(${scale})`}
+            className="cursor-pointer transition-opacity hover:opacity-70"
+            onClick={() => onToothClick(n)}
+          >
+            <title>{`Dente ${n}`}</title>
+            <path
+              d={TOOTH_PATH}
+              fill={toothFill(color)}
+              stroke={toothStroke(color)}
+              strokeWidth="1.5"
+              strokeLinejoin="round"
+            />
+          </g>
+        )
+      })}
+      {/* numeração fora do arco */}
+      {teeth.map((n, i) => {
+        const phi = ((-spread / 2 + (spread * i) / (total - 1)) * Math.PI) / 180
+        const x = cx + (R + 14 * scale) * Math.sin(phi)
+        const y = isUpper
+          ? yBase - (Ry + 12 * scale) * Math.cos(phi)
+          : yBase + (Ry + 12 * scale) * Math.cos(phi)
+        return (
+          <text
+            key={`t${n}`}
+            x={x}
+            y={y}
+            textAnchor="middle"
+            dominantBaseline="middle"
+            fontSize={deciduous ? 8 : 9}
+            fontWeight="600"
+            fill="#6B4F42"
+          >
+            {n}
+          </text>
+        )
+      })}
+    </svg>
   )
 }
 
@@ -133,18 +199,7 @@ export function OdontogramNew({ procedures, items, onChange }: Props) {
   const updatePrice = (itemId: string, price: number) =>
     onChange(items.map((it) => (it.id === itemId ? { ...it, price } : it)))
 
-  const Row = ({ nums }: { nums: number[] }) => (
-    <div className="flex gap-1">
-      {nums.map((n) => (
-        <ToothShape
-          key={n}
-          n={n}
-          color={TOOTH_COLORS[toothColor(n)]}
-          onClick={() => openTooth(n)}
-        />
-      ))}
-    </div>
-  )
+  const colorFor = (n: number) => TOOTH_COLORS[toothColor(n)]
 
   return (
     <Card className="card-warm p-4 space-y-4">
@@ -160,35 +215,42 @@ export function OdontogramNew({ procedures, items, onChange }: Props) {
         </p>
       </div>
 
-      {/* Permanent dentition */}
-      <div className="space-y-1 overflow-x-auto">
-        <div className="flex gap-4 justify-center">
-          <Row nums={PERMANENT_UPPER_RIGHT} />
-          <div className="w-px bg-[#EDE3D8]" />
-          <Row nums={PERMANENT_UPPER_LEFT} />
-        </div>
-        <div className="flex gap-4 justify-center">
-          <Row nums={PERMANENT_LOWER_RIGHT} />
-          <div className="w-px bg-[#EDE3D8]" />
-          <Row nums={PERMANENT_LOWER_LEFT} />
-        </div>
+      {/* Permanent dentition — arcada superior + inferior */}
+      <div className="space-y-2 overflow-x-auto">
+        <p className="text-[10px] font-bold uppercase text-[#6B4F42]">Dentição Permanente</p>
+        <ArchSvg
+          teeth={[...PERMANENT_UPPER_RIGHT, ...PERMANENT_UPPER_LEFT]}
+          isUpper={true}
+          colorFor={colorFor}
+          onToothClick={openTooth}
+        />
+        <ArchSvg
+          teeth={[...PERMANENT_LOWER_RIGHT, ...PERMANENT_LOWER_LEFT]}
+          isUpper={false}
+          colorFor={colorFor}
+          onToothClick={openTooth}
+        />
       </div>
 
       {/* Deciduous dentition */}
-      <div className="space-y-1 overflow-x-auto pt-2 border-t border-dashed border-[#EDE3D8]">
-        <p className="text-[10px] font-bold uppercase text-[#6B4F42] text-center">
+      <div className="space-y-2 overflow-x-auto pt-2 border-t border-dashed border-[#EDE3D8]">
+        <p className="text-[10px] font-bold uppercase text-[#6B4F42]">
           Dentição Decídua (infantil)
         </p>
-        <div className="flex gap-4 justify-center">
-          <Row nums={DECIDUOUS_UPPER_RIGHT} />
-          <div className="w-px bg-[#EDE3D8]" />
-          <Row nums={DECIDUOUS_UPPER_LEFT} />
-        </div>
-        <div className="flex gap-4 justify-center">
-          <Row nums={DECIDUOUS_LOWER_RIGHT} />
-          <div className="w-px bg-[#EDE3D8]" />
-          <Row nums={DECIDUOUS_LOWER_LEFT} />
-        </div>
+        <ArchSvg
+          teeth={[...DECIDUOUS_UPPER_RIGHT, ...DECIDUOUS_UPPER_LEFT]}
+          isUpper={true}
+          deciduous={true}
+          colorFor={colorFor}
+          onToothClick={openTooth}
+        />
+        <ArchSvg
+          teeth={[...DECIDUOUS_LOWER_RIGHT, ...DECIDUOUS_LOWER_LEFT]}
+          isUpper={false}
+          deciduous={true}
+          colorFor={colorFor}
+          onToothClick={openTooth}
+        />
       </div>
 
       <div className="flex flex-wrap gap-2 text-[10px] text-[#6B4F42]">

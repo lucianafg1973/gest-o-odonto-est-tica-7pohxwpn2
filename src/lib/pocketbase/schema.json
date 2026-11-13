@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2026-11-13T03:39:04.963Z",
+  "generatedAt": "2026-11-13T04:26:02.799Z",
   "collections": [
     {
       "name": "users",
@@ -571,9 +571,28 @@
           "required": false,
           "system": false,
           "autodateTriggers": ["onCreate", "onUpdate"]
+        },
+        {
+          "name": "kind",
+          "type": "select",
+          "required": false,
+          "system": false,
+          "selectValues": ["hof", "odontologico"]
+        },
+        {
+          "name": "treatments",
+          "type": "json",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "payment_plan",
+          "type": "json",
+          "required": false,
+          "system": false
         }
       ],
-      "indexes": []
+      "indexes": ["CREATE INDEX `idx_vplans_patient_kind` ON `virtual_plans` (patient)"]
     },
     {
       "name": "documents",

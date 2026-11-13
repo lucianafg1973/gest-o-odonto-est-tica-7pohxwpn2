@@ -19,6 +19,8 @@ export interface PaymentInstallment {
   amount: number
   /** Data de vencimento preestabelecida (YYYY-MM-DD). */
   due_date: string
+  /** Nº de parcelas daquele meio (1 = à vista/parcela única). */
+  installments_count?: number
 }
 
 export interface PaymentPlan {
@@ -128,6 +130,7 @@ export function PaymentInfo({ plan, onPlanChange, total, formatCurrency }: Props
           method: 'boleto',
           amount: 0,
           due_date: addDaysISO(new Date().toISOString().slice(0, 10), 30),
+          installments_count: 1,
         },
       ],
     })
@@ -161,7 +164,7 @@ export function PaymentInfo({ plan, onPlanChange, total, formatCurrency }: Props
         {items.map((i) => (
           <div
             key={i.id}
-            className="grid grid-cols-2 sm:grid-cols-12 gap-2 items-end bg-white border border-[#EDE3D8] rounded-xl p-2"
+            className="grid grid-cols-2 sm:grid-cols-14 gap-2 items-end bg-white border border-[#EDE3D8] rounded-xl p-2"
           >
             <div className="sm:col-span-2 space-y-1">
               <Label className="text-[10px] font-semibold">Tipo</Label>
@@ -196,6 +199,19 @@ export function PaymentInfo({ plan, onPlanChange, total, formatCurrency }: Props
                   ))}
                 </SelectContent>
               </Select>
+            </div>
+            <div className="sm:col-span-2 space-y-1">
+              <Label className="text-[10px] font-semibold">Nº de parcelas</Label>
+              <Input
+                type="number"
+                min={1}
+                step={1}
+                value={i.installments_count ?? 1}
+                onChange={(e) =>
+                  update(i.id, { installments_count: Math.max(1, Number(e.target.value) || 1) })
+                }
+                className="text-xs"
+              />
             </div>
             <div className="sm:col-span-2 space-y-1">
               <Label className="text-[10px] font-semibold">Valor (R$)</Label>
@@ -253,8 +269,18 @@ export function PaymentInfo({ plan, onPlanChange, total, formatCurrency }: Props
       </div>
       <p className="text-[10px] text-[#6B4F42]">
         Resumo: {items.filter((i) => i.kind === 'entrada').length} entrada(s) ·{' '}
-        {items.filter((i) => i.kind === 'parcela').length} parcela(s) —{' '}
-        {[...new Set(items.map((i) => methodLabel(i.method)))].join(', ') || '—'}
+        {items.reduce((s, i) => s + (i.kind === 'parcela' ? (i.installments_count ?? 1) : 1), 0)}{' '}
+        parcela(s) —{' '}
+        {items
+          .map(
+            (i) =>
+              `${methodLabel(i.method)}${
+                i.kind === 'parcela' && (i.installments_count ?? 1) > 1
+                  ? ` ${i.installments_count}x`
+                  : ''
+              }`,
+          )
+          .join(' + ') || '—'}
       </p>
     </Card>
   )
