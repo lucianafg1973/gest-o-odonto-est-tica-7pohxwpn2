@@ -347,8 +347,17 @@ export function OdontogramNew({ procedures, items, onChange, locked = false }: P
           {items.map((it) => (
             <div key={it.id} className="flex items-center gap-2 text-xs">
               <Badge className="bg-[#2D1B14] text-white text-[9px] px-1.5">Dente {it.tooth}</Badge>
-              <span className="text-[#2D1B14]">{it.procedureName}</span>
-              <span className="ml-auto font-bold text-[#2D1B14]">{formatCurrency(it.price)}</span>
+              <span className="text-[#2D1B14] flex-1 min-w-0 truncate">{it.procedureName}</span>
+              <Input
+                type="number"
+                min={0}
+                step="0.01"
+                value={it.price}
+                disabled={locked}
+                onChange={(e) => updatePrice(it.id, Number(e.target.value) || 0)}
+                className="w-28 h-7 text-xs bg-white"
+                title="Valor editável — o total e as parcelas recalculam automaticamente"
+              />
               {!locked && (
                 <Button
                   size="sm"

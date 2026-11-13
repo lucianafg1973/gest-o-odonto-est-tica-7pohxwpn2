@@ -713,6 +713,7 @@ export default function PacienteDetail() {
                 <PaymentInfo
                   plan={hoofPaymentPlan}
                   onPlanChange={setHoofPaymentPlan}
+                  planId={activeHofPlan.id}
                   total={hoofTreatments.reduce((s, t) => s + t.price, 0)}
                   formatCurrency={formatCurrency}
                   locked={activeHofPlan.approval_status === 'aprovado'}
@@ -747,6 +748,7 @@ export default function PacienteDetail() {
                 <PaymentInfo
                   plan={dentalPaymentPlan}
                   onPlanChange={setDentalPaymentPlan}
+                  planId={activeDentalPlan.id}
                   total={dentalTreatments.reduce((s, t) => s + t.price, 0)}
                   formatCurrency={formatCurrency}
                   locked={activeDentalPlan.approval_status === 'aprovado'}

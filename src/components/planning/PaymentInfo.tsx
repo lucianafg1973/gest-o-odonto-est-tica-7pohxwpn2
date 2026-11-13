@@ -1,3 +1,4 @@
+import { useEffect, useRef } from 'react'
 import { Label } from '@/components/ui/label'
 import {
   Select,
@@ -75,6 +76,9 @@ interface Props {
   formatCurrency?: (n: number) => string
   /** Quando o plano está aprovado, todos os campos ficam somente leitura. */
   locked?: boolean
+  /** Id do registro do plano (virtual_plans.id) — usada para NÃO redistribuir
+   * as parcelas ao carregar/reabrir/trocar de planejamento. */
+  planId?: string
 }
 
 const MAX_PARCELAS = 24
@@ -85,6 +89,7 @@ export function PaymentInfo({
   total,
   formatCurrency = fmtDefault,
   locked = false,
+  planId,
 }: Props) {
   const fmt = formatCurrency
   const items = plan.installments || []
@@ -101,9 +106,70 @@ export function PaymentInfo({
 
   const setPlan = (installments: PaymentInstallment[]) => onPlanChange({ installments })
 
-  /** Edita UM campo de UMA parcela — nunca recalcula as demais. */
+  /** Edita UM campo de UMA parcela (vencimento, modalidade) — não mexe nas demais. */
   const updateParcela = (id: string, patch: Partial<PaymentInstallment>) =>
     setPlan(items.map((i) => (i.id === id ? { ...i, ...patch } : i)))
+
+  /**
+   * Edita o VALOR de UMA parcela: as DEMAIS parcelas são recalculadas
+   * automaticamente em valores IGUAIS, distribuindo o saldo restante
+   * (total − entrada − valor editado) entre elas, com ajuste de centavos
+   * na última (splitCents). Sem duplicação e sem perda de centavos.
+   */
+  const onParcelaValorChange = (id: string, valorReais: number) => {
+    if (locked) return
+    const editadaC = Math.max(0, toCents(valorReais))
+    const outras = parcelas.filter((p) => p.id !== id)
+    const saldoParaOutras = Math.max(0, totalC - entradaC - editadaC)
+    const valores = splitCents(saldoParaOutras, Math.max(1, outras.length))
+    const map = new Map<string, number>()
+    outras.forEach((p, i) => map.set(p.id, valores[i]))
+    setPlan(
+      items.map((i) => {
+        if (i.id === id) return { ...i, amount: fromCents(editadaC) }
+        const c = map.get(i.id)
+        return c !== undefined ? { ...i, amount: fromCents(c) } : i
+      }),
+    )
+  }
+
+  /**
+   * O TOTAL mudou (usuário editou/adicionou/removeu um procedimento): as
+   * parcelas existentes são redistribuídas igualmente sobre o novo saldo
+   * (total − entrada), preservando quantidade, meios e vencimentos.
+   * Executa SOMENTE quando o total muda com o mesmo plano aberto — ao
+   * carregar/reabrir/trocar de planejamento (planId muda), os valores salvos
+   * são preservados sem redistribuição.
+   */
+  const planIdRef = useRef(planId)
+  const prevSaldoRef = useRef<number | null>(null)
+  useEffect(() => {
+    if (planId !== planIdRef.current) {
+      planIdRef.current = planId
+      prevSaldoRef.current = saldo
+      return
+    }
+    const prev = prevSaldoRef.current
+    prevSaldoRef.current = saldo
+    if (locked || prev === null || prev === saldo) return
+    const atuais = items.filter((i) => i.kind === 'parcela')
+    if (atuais.length === 0) return
+    if (saldo <= 0) {
+      setPlan(items.filter((i) => i.kind !== 'parcela'))
+      return
+    }
+    const valores = splitCents(saldo, atuais.length)
+    const map = new Map<string, number>()
+    atuais.forEach((p, i) => map.set(p.id, valores[i]))
+    setPlan(
+      items.map((i) => {
+        const c = map.get(i.id)
+        return c !== undefined ? { ...i, amount: fromCents(c) } : i
+      }),
+    )
+    // Executa apenas quando o total (ou o plano aberto) muda.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [total, planId])
 
   /**
    * Entrada: cria/atualiza a linha de entrada e RECALCULA a distribuição
@@ -326,7 +392,8 @@ export function PaymentInfo({
       {parcelas.length > 0 && (
         <div className="space-y-2">
           <Label className="text-[10px] font-semibold text-[#6B4F42]">
-            Parcelas — valor, vencimento e modalidade editáveis individualmente
+            Parcelas — ao editar o valor de uma, as demais são recalculadas automaticamente em
+            valores iguais
           </Label>
           {parcelas.map((p, idx) => (
             <div
@@ -344,7 +411,7 @@ export function PaymentInfo({
                   step="0.01"
                   value={p.amount}
                   disabled={locked}
-                  onChange={(e) => updateParcela(p.id, { amount: Number(e.target.value) || 0 })}
+                  onChange={(e) => onParcelaValorChange(p.id, Number(e.target.value) || 0)}
                   className="text-xs"
                 />
               </div>
