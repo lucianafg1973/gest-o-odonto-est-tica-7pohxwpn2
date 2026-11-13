@@ -1,5 +1,12 @@
-import { FinancialTransactionRecord, updateTransaction } from '@/services/financial'
+import { useState } from 'react'
+import {
+  FinancialTransactionRecord,
+  updateTransaction,
+  createTransaction,
+} from '@/services/financial'
 import { createMessageRecord, MessageRecord } from '@/services/messages'
+import { PatientRecord } from '@/services/patients'
+import { ReceiptsPanel } from '@/components/patients/ReceiptsPanel'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
@@ -12,15 +19,23 @@ import {
   CheckCircle2,
   Clock,
   History,
+  CreditCard,
 } from 'lucide-react'
 import { toast } from '@/hooks/use-toast'
+import { Label } from '@/components/ui/label'
+import { Input } from '@/components/ui/input'
+
+const FINANCEIRO_CARD_FEE_DEFAULT = 2
 
 interface Props {
   transactions: FinancialTransactionRecord[]
   /** Histórico completo de mensagens (inclui cobranças e lembretes enviados). */
   messages?: MessageRecord[]
+  patient?: PatientRecord
   patientName: string
   patientPhone?: string
+  /** Total contratado no planejamento — base para o bloqueio de quitação. */
+  totalContratado?: number
   onRefresh: () => void
 }
 
@@ -34,7 +49,10 @@ const methodLabels: Record<string, string> = {
   pix: 'Pix',
   boleto: 'Boleto',
   cartao: 'Cartão',
+  cartao_credito: 'Cartão de crédito',
+  cartao_debito: 'Cartão de débito',
   dinheiro: 'Dinheiro',
+  cartao_taxa: 'Taxa de cartão (interna)',
 }
 
 const brl = (v: number) => v.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })
@@ -59,10 +77,13 @@ function openWhatsApp(phone: string, text: string) {
 export function FinanceiroTab({
   transactions,
   messages = [],
+  patient,
   patientName,
   patientPhone,
+  totalContratado = 0,
   onRefresh,
 }: Props) {
+  const [feePercent, setFeePercent] = useState<string>(String(FINANCEIRO_CARD_FEE_DEFAULT))
   const receitas = transactions
     .filter((t) => t.transaction_type === 'receita')
     .reduce((s, t) => s + (t.amount || 0), 0)
@@ -75,7 +96,25 @@ export function FinanceiroTab({
 
   const handleMarkPaid = async (t: FinancialTransactionRecord) => {
     try {
-      await updateTransaction(t.id, { status: 'pago' })
+      const updates: Partial<FinancialTransactionRecord> = { status: 'pago' }
+      // Taxa de cartão (configurável): despesa financeira interna — NUNCA altera o
+      // valor contratado nem aparece no recibo (que mostra o valor bruto pago).
+      const isCartao = (t.payment_method || '').startsWith('cartao')
+      const pct = isCartao ? Math.max(0, parseFloat(feePercent.replace(',', '.')) || 0) : 0
+      if (isCartao && pct > 0) {
+        const taxa = Math.round(100 * ((t.amount || 0) * (pct / 100))) / 100
+        updates.card_fee_percent = pct
+        await createTransaction({
+          patient: t.patient,
+          description: `Taxa de cartão (${pct.toFixed(1).replace('.', ',')}%) — ${t.description || 'parcela'}`,
+          amount: taxa,
+          transaction_date: t.transaction_date,
+          transaction_type: 'despesa',
+          status: 'pago',
+          payment_method: 'cartao_taxa',
+        })
+      }
+      await updateTransaction(t.id, updates)
       toast({ title: 'Parcela marcada como paga!' })
       onRefresh()
     } catch {
@@ -130,6 +169,15 @@ export function FinanceiroTab({
 
   return (
     <div className="space-y-4">
+      {patient && (
+        <ReceiptsPanel
+          transactions={transactions}
+          patient={patient}
+          totalContratado={totalContratado}
+          onRefresh={onRefresh}
+        />
+      )}
+
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
         <Card className="card-warm p-4 border-t-4 border-t-[#2E7D32]">
           <p className="text-[10px] font-bold uppercase tracking-wide text-[#6B4F42] flex items-center gap-1">
@@ -166,9 +214,32 @@ export function FinanceiroTab({
           <CardTitle className="font-serif-title text-base text-[#2D1B14]">
             Histórico Completo — Transações e Parcelas ({transactions.length})
           </CardTitle>
-          <p className="text-[11px] text-[#6B4F42]">
-            Todas as transações e parcelas do paciente, pagas e pendentes.
-          </p>
+          <div className="flex flex-wrap items-center gap-2 pt-1">
+            <p className="text-[11px] text-[#6B4F42]">
+              Todas as transações e parcelas do paciente, pagas e pendentes.
+            </p>
+            <div className="flex items-center gap-1 ml-auto">
+              <CreditCard className="w-3.5 h-3.5 text-[#8B6914]" />
+              <Label
+                htmlFor="fee-percent"
+                className="text-[10px] font-semibold text-[#6B4F42] whitespace-nowrap"
+              >
+                Taxa de cartão (%)
+              </Label>
+              <Input
+                id="fee-percent"
+                type="number"
+                min={0}
+                step="0.1"
+                value={feePercent}
+                onChange={(e) => setFeePercent(e.target.value)}
+                className="w-16 h-7 text-[11px]"
+              />
+              <span className="text-[10px] text-[#6B4F42]">
+                despesa interna — não altera o contrato
+              </span>
+            </div>
+          </div>
         </CardHeader>
         <CardContent className="pt-4 space-y-2">
           {transactions.length === 0 ? (

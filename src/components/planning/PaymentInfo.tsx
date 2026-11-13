@@ -29,12 +29,10 @@ export interface PaymentPlan {
 
 export const PAYMENT_METHODS = [
   { value: 'pix', label: 'Pix' },
-  { value: 'cartao_credito', label: 'Cartão de Crédito' },
-  { value: 'cartao_debito', label: 'Cartão de Débito' },
   { value: 'boleto', label: 'Boleto' },
   { value: 'dinheiro', label: 'Dinheiro' },
-  { value: 'convenio', label: 'Convênio' },
-  { value: 'outro', label: 'Outro' },
+  { value: 'cartao_credito', label: 'Cartão de Crédito' },
+  { value: 'cartao_debito', label: 'Cartão de Débito' },
 ]
 
 const methodLabel = (v: string) => PAYMENT_METHODS.find((m) => m.value === v)?.label || v
@@ -52,7 +50,7 @@ const round2 = (n: number) => Math.round(n * 100) / 100
 /** Gera um plano padrão: entrada em Pix hoje + 1 parcela em 30 dias. */
 export function defaultPaymentPlan(total: number): PaymentPlan {
   const today = new Date().toISOString().slice(0, 10)
-  const entrada = round2(total * 0.3)
+  const entrada = total > 0 ? round2(total * 0.3) : 0
   return {
     installments: [
       { id: newId(), kind: 'entrada', method: 'pix', amount: entrada, due_date: today },
@@ -101,8 +99,14 @@ interface Props {
 
 export function PaymentInfo({ plan, onPlanChange, total, formatCurrency, locked = false }: Props) {
   const items = plan.installments || []
-  const plannedTotal = items.reduce((s, i) => s + (i.amount || 0), 0)
-  const diff = round2(total - plannedTotal)
+  const somaEntradasVis = round2(
+    items.filter((i) => i.kind === 'entrada').reduce((s, i) => s + (i.amount || 0), 0),
+  )
+  const somaParcelasVis = round2(
+    items.filter((i) => i.kind === 'parcela').reduce((s, i) => s + (i.amount || 0), 0),
+  )
+  const diff = round2(total - (somaEntradasVis + somaParcelasVis))
+  const conferido = Math.abs(diff) <= 0.009
 
   const update = (id: string, patch: Partial<PaymentInstallment>) =>
     onPlanChange({
@@ -444,25 +448,25 @@ export function PaymentInfo({ plan, onPlanChange, total, formatCurrency, locked 
 
       <div className="flex flex-wrap justify-end items-center gap-3 border-t border-[#EDE3D8] pt-2 text-xs">
         <span className="text-[#6B4F42]">
-          Total planejado:{' '}
-          <strong className="text-[#2D1B14]">{formatCurrency(plannedTotal)}</strong>
+          Entrada: <strong className="text-[#2D1B14]">{formatCurrency(somaEntradasVis)}</strong>
         </span>
         <span className="text-[#6B4F42]">
-          Saldo para parcelas:{' '}
-          <strong className="text-[#C66B4D]">{formatCurrency(saldoParcelas)}</strong>
+          Parcelas: <strong className="text-[#2D1B14]">{formatCurrency(somaParcelasVis)}</strong>
         </span>
         <span className="text-[#6B4F42]">
-          Valor do orçamento: <strong className="text-[#C66B4D]">{formatCurrency(total)}</strong>
+          Total contratado: <strong className="text-[#C66B4D]">{formatCurrency(total)}</strong>
         </span>
-        {Math.abs(diff) > 0.009 && (
-          <span
-            className={`px-2 py-0.5 rounded-full font-semibold ${
-              diff > 0 ? 'bg-amber-100 text-amber-800' : 'bg-red-100 text-red-700'
-            }`}
-          >
-            {diff > 0 ? 'Faltam ' : 'Excedem '} {formatCurrency(Math.abs(diff))}
-          </span>
-        )}
+        <span
+          className={`px-2 py-0.5 rounded-full font-semibold ${
+            conferido ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'
+          }`}
+        >
+          {conferido
+            ? '✓ Conferido: entrada + parcelas = total'
+            : `Diferença de ${formatCurrency(Math.abs(diff))} ${
+                diff > 0 ? '(faltam)' : '(excedem)'
+              }`}
+        </span>
       </div>
       <p className="text-[10px] text-[#6B4F42]">
         Resumo: {items.filter((i) => i.kind === 'entrada').length} entrada(s) ·{' '}

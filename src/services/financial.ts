@@ -15,9 +15,18 @@ export interface FinancialTransactionRecord {
     | 'outros'
   description: string
   amount: number
-  payment_method?: 'pix' | 'boleto' | 'cartao' | 'dinheiro'
+  payment_method?:
+    | 'pix'
+    | 'boleto'
+    | 'cartao'
+    | 'cartao_credito'
+    | 'cartao_debito'
+    | 'dinheiro'
+    | 'cartao_taxa'
   status?: 'pago' | 'pendente' | 'cancelado'
   transaction_date: string
+  /** Percentual da taxa de cartão lançada como despesa interna (null = sem taxa). */
+  card_fee_percent?: number | null
   created: string
   expand?: {
     patient?: any

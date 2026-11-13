@@ -25,7 +25,11 @@ import {
   PaymentInstallmentRecord,
 } from '@/services/virtual_plans'
 import { getDocuments, DocumentRecord } from '@/services/documents'
-import { getFinancialTransactions, FinancialTransactionRecord } from '@/services/financial'
+import {
+  getFinancialTransactions,
+  createTransaction,
+  FinancialTransactionRecord,
+} from '@/services/financial'
 import { getMessagesByPatient, MessageRecord } from '@/services/messages'
 import { getProcedures } from '@/services/procedures'
 import { ProcedureRecord } from '@/services/procedures'
@@ -246,6 +250,36 @@ export default function PacienteDetail() {
   }
 
   /** Aprova o planejamento ativo: salva status + data e bloqueia as edições. */
+  /**
+   * Lança o plano de pagamento do planejamento como transações (receitas/parcelas)
+   * na aba Financeiro — apenas uma vez por planejamento (chave = virtual_plans.id).
+   */
+  const syncPlanToFinancial = async (
+    plan: VirtualPlanRecord,
+    paymentPlan: PaymentPlan,
+    tipoLabel: string,
+  ) => {
+    const trans = await getFinancialTransactions(`patient="${plan.patient}"`)
+    const prefix = `Plan ${plan.id} · Parcela`
+    const jaTem = trans.some((t) => t.description?.startsWith(prefix))
+    if (jaTem) return
+    const parcelas = paymentPlan.installments
+    if (parcelas.length === 0) return
+    await Promise.all(
+      parcelas.map((p, i) =>
+        createTransaction({
+          patient: plan.patient,
+          description: `${prefix} ${i + 1}/${parcelas.length} — ${tipoLabel}`,
+          amount: p.amount,
+          transaction_date: p.due_date || new Date().toISOString().slice(0, 10),
+          transaction_type: 'receita',
+          status: 'pendente',
+          payment_method: (p.method as FinancialTransactionRecord['payment_method']) || 'pix',
+        }),
+      ),
+    )
+  }
+
   const handleApprovePlan = async (kind: PlanKind) => {
     const plan = kind === 'hof' ? activeHofPlan : activeDentalPlan
     if (!plan || plan.approval_status === 'aprovado') return
@@ -258,9 +292,20 @@ export default function PacienteDetail() {
       setPlans((prev) => prev.map((p) => (p.id === aprovado.id ? aprovado : p)))
       if (kind === 'hof') setActiveHofPlan(aprovado)
       else setActiveDentalPlan(aprovado)
-      toast({
-        title: 'Planejamento aprovado! Agora você pode imprimir — as edições ficam bloqueadas.',
-      })
+      // Lança as parcelas na aba Financeiro (uma vez por planejamento, idempotente).
+      try {
+        const paymentPlan = kind === 'hof' ? hoofPaymentPlan : dentalPaymentPlan
+        await syncPlanToFinancial(aprovado, paymentPlan, kind === 'hof' ? 'HOF' : 'Odontológico')
+        toast({
+          title:
+            'Planejamento aprovado! Parcelas lançadas no Financeiro — as edições ficam bloqueadas.',
+        })
+      } catch {
+        toast({
+          title: 'Planejamento aprovado — mas houve erro ao lançar as parcelas no Financeiro.',
+          variant: 'destructive',
+        })
+      }
     } catch (_) {
       toast({ title: 'Erro ao aprovar o planejamento', variant: 'destructive' })
     } finally {
@@ -405,6 +450,21 @@ export default function PacienteDetail() {
 
   const tabTriggerClass = 'text-xs data-[state=active]:bg-[#C66B4D] data-[state=active]:text-white'
   const photoUrl = getPatientPhotoUrl(patient)
+
+  // Total contratado = soma dos procedimentos dos planejamentos aprovados
+  // (ou, na falta deles, dos rascunhos abertos) — base do saldo e das recibos.
+  const totalContratado =
+    plans
+      .filter((p) => p.approval_status === 'aprovado')
+      .reduce(
+        (s, p) =>
+          s + (loadPlanningState(p).treatments || []).reduce((x, t) => x + (t.price || 0), 0),
+        0,
+      ) ||
+    Math.max(
+      hoofTreatments.reduce((s, t) => s + (t.price || 0), 0),
+      dentalTreatments.reduce((s, t) => s + (t.price || 0), 0),
+    )
 
   return (
     <div className="space-y-6">
@@ -724,8 +784,10 @@ export default function PacienteDetail() {
             <FinanceiroTab
               transactions={transactions}
               messages={messages}
+              patient={patient}
               patientName={patient.name}
               patientPhone={patient.phone}
+              totalContratado={totalContratado}
               onRefresh={loadAllData}
             />
           </TabsContent>

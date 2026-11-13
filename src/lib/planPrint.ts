@@ -1,9 +1,8 @@
 import { PaymentInstallment, PaymentPlan, PAYMENT_METHODS } from '@/components/planning/PaymentInfo'
 import { TreatmentItem } from '@/components/planning/TreatmentList'
-import { formatCurrency } from '@/lib/price-calculation'
 import { PlanKind, VirtualPlanRecord } from '@/services/virtual_plans'
+import { formatCurrency } from '@/lib/price-calculation'
 
-/** Rótulo legível do meio de pagamento. */
 export const paymentMethodLabel = (v: string) =>
   PAYMENT_METHODS.find((m) => m.value === v)?.label || v
 
@@ -30,7 +29,7 @@ export function printPlan(plan: VirtualPlanRecord, patientName: string) {
   const kindLabel =
     plan.kind === 'hof' ? 'Planejamento HOF — Face e Pescoço' : 'Planejamento Odontológico'
   const treatments = (plan.treatments || []) as TreatmentItem[]
-  const installments = (plan.payment_plan || []) as PaymentInstallment[]
+  const installments = (plan.payment_plan || []) as unknown as PaymentInstallment[]
   const total = treatments.reduce((s, t) => s + (t.price || 0), 0)
 
   const rows = treatments
