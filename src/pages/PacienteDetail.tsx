@@ -296,9 +296,14 @@ export default function PacienteDetail() {
       try {
         const paymentPlan = kind === 'hof' ? hoofPaymentPlan : dentalPaymentPlan
         await syncPlanToFinancial(aprovado, paymentPlan, kind === 'hof' ? 'HOF' : 'Odontológico')
+        // Recarrega os dados para que as parcelas apareçam IMEDIATAMENTE na aba
+        // Financeiro (sem depender de recarregar a página).
+        await loadAllData()
         toast({
           title:
             'Planejamento aprovado! Parcelas lançadas no Financeiro — as edições ficam bloqueadas.',
+          description:
+            'Vá à aba "Financeiro" para acompanhar as parcelas, marcar como pagas e emitir recibos.',
         })
       } catch {
         toast({

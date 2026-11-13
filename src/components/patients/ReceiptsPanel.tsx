@@ -13,7 +13,7 @@ import {
 import { FinancialTransactionRecord } from '@/services/financial'
 import { PatientRecord } from '@/services/patients'
 import { formatCurrency } from '@/lib/price-calculation'
-import { Receipt, FileSpreadsheet } from 'lucide-react'
+import { Receipt, FileSpreadsheet, Lock } from 'lucide-react'
 
 interface Props {
   transactions: FinancialTransactionRecord[]
@@ -127,9 +127,10 @@ export function ReceiptsPanel({ transactions, patient, totalContratado, onRefres
   const handleQuitacao = () => {
     if (saldoPendente > 0.009) {
       toast({
-        title: 'Recibo de quitação total bloqueado',
-        description: `Ainda há ${formatCurrency(saldoPendente)} em aberto. Emita a quitação apenas após o último pagamento confirmado.`,
+        title: '🔒 Recibo de quitação total bloqueado',
+        description: `Ainda há ${formatCurrency(saldoPendente)} em aberto — marque a última parcela como paga e emita o recibo consolidado para liberar a quitação.`,
         variant: 'destructive',
+        duration: 6000,
       })
       return
     }
@@ -159,9 +160,15 @@ export function ReceiptsPanel({ transactions, patient, totalContratado, onRefres
           <Button
             size="sm"
             variant="outline"
-            className="text-[11px] text-[#6B4F42] border-[#6B4F42]/40 hover:bg-[#FAF6F0]"
+            className="text-[11px] text-[#6B4F42] border-[#6B4F42]/40 hover:bg-[#FAF6F0] gap-1"
             onClick={handleQuitacao}
+            title={
+              saldoPendente > 0.009
+                ? `Bloqueado — saldo pendente de ${formatCurrency(Math.max(0, saldoPendente))}. Marque todas as parcelas como pagas para liberar.`
+                : 'Libera a emissão do recibo de quitação total.'
+            }
           >
+            {saldoPendente > 0.009 && <Lock className="w-3 h-3" />}
             Recibo de quitação total
           </Button>
         </div>
