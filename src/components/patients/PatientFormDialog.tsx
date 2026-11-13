@@ -197,7 +197,10 @@ export function PatientFormDialog({ open, onOpenChange, patient, onSaved }: Prop
     }
 
     const digitsCpf = onlyDigits(v.cpf)
-    if (digitsCpf && !isValidCpf(v.cpf)) {
+    // Em edição, só valida o CPF se ele foi alterado (registros antigos podem ter
+    // CPF com dígito inválido; isso não deve bloquear a edição dos demais campos).
+    const cpfChanged = !patient || onlyDigits(patient.cpf || '') !== digitsCpf
+    if (digitsCpf && cpfChanged && !isValidCpf(v.cpf)) {
       errs.cpf = 'CPF inválido: confira os dígitos.'
     }
 
@@ -212,7 +215,7 @@ export function PatientFormDialog({ open, onOpenChange, patient, onSaved }: Prop
       if (d > today) errs.birth_date = 'A data de nascimento não pode ser no futuro.'
     }
 
-    if (digitsCpf) {
+    if (digitsCpf && cpfChanged) {
       try {
         const all = await getPatients()
         const dup = all.find(

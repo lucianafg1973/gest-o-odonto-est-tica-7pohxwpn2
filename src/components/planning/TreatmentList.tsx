@@ -12,12 +12,15 @@ import { Card, CardHeader, CardTitle } from '@/components/ui/card'
 import { Trash2, Plus } from 'lucide-react'
 import { ProcedureRecord } from '@/services/procedures'
 import { formatCurrency } from '@/lib/price-calculation'
+import { procedureTablePrice, treatmentFromProcedure } from '@/lib/planning'
 
 export interface TreatmentItem {
   id: string
   procedureId: string
   procedureName: string
   tooth: string
+  /** Região da face/pescoço (usada no Planejamento HOF). */
+  region: string
   faces: string[]
   price: number
 }
@@ -28,21 +31,24 @@ interface Props {
   procedures: ProcedureRecord[]
   items: TreatmentItem[]
   onChange: (items: TreatmentItem[]) => void
+  /** Rótulo do campo de localização (ex.: "Dente(s)" ou "Região"). */
+  locationLabel?: string
+  locationPlaceholder?: string
 }
 
-export function TreatmentList({ title, description, procedures, items, onChange }: Props) {
+export function TreatmentList({
+  title,
+  description,
+  procedures,
+  items,
+  onChange,
+  locationLabel = 'Localização',
+  locationPlaceholder = 'Ex.: 11, 12 ou região',
+}: Props) {
   const addItem = () => {
-    onChange([
-      ...items,
-      {
-        id: `t${Date.now()}${Math.random().toString(36).slice(2, 6)}`,
-        procedureId: procedures[0]?.id || '',
-        procedureName: procedures[0]?.name || '',
-        tooth: '',
-        faces: [],
-        price: procedures[0]?.manual_price || procedures[0]?.computed_price || 0,
-      },
-    ])
+    const first = procedures[0]
+    if (!first) return
+    onChange([...items, treatmentFromProcedure(first)])
   }
 
   const updateItem = (id: string, patch: Partial<TreatmentItem>) =>
@@ -98,7 +104,7 @@ export function TreatmentList({ title, description, procedures, items, onChange 
                   updateItem(item.id, {
                     procedureId: v,
                     procedureName: proc?.name || '',
-                    price: proc?.manual_price ?? proc?.computed_price ?? item.price,
+                    price: procedureTablePrice(proc),
                   })
                 }}
               >
@@ -108,18 +114,20 @@ export function TreatmentList({ title, description, procedures, items, onChange 
                 <SelectContent>
                   {procedures.map((p) => (
                     <SelectItem key={p.id} value={p.id} className="text-xs">
-                      {p.name}
+                      {p.name} — {formatCurrency(procedureTablePrice(p))}
                     </SelectItem>
                   ))}
                 </SelectContent>
               </Select>
             </div>
             <div className="sm:col-span-3 space-y-1">
-              <Label className="text-[10px] font-semibold">Dente(s)</Label>
+              <Label className="text-[10px] font-semibold">{locationLabel}</Label>
               <Input
-                value={item.tooth}
-                onChange={(e) => updateItem(item.id, { tooth: e.target.value })}
-                placeholder="Ex.: 11, 12"
+                value={item.region || item.tooth}
+                onChange={(e) =>
+                  updateItem(item.id, { region: e.target.value, tooth: e.target.value })
+                }
+                placeholder={locationPlaceholder}
                 className="text-xs"
               />
             </div>
