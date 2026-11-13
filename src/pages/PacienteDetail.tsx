@@ -19,11 +19,11 @@ import { getFinancialTransactions, FinancialTransactionRecord } from '@/services
 import { getMessagesByPatient, MessageRecord } from '@/services/messages'
 import { getProcedures } from '@/services/procedures'
 import { ProcedureRecord } from '@/services/procedures'
-import { CanvasAnnotator } from '@/components/virtual-planning/CanvasAnnotator'
-import { Odontogram, ToothState } from '@/components/planning/Odontogram'
-import { TreatmentList } from '@/components/planning/TreatmentList'
 import { formatCurrency } from '@/lib/price-calculation'
-import { PaymentInfo } from '@/components/planning/PaymentInfo'
+import { CanvasAnnotator } from '@/components/virtual-planning/CanvasAnnotator'
+import { OdontogramNew } from '@/components/planning/OdontogramNew'
+import { FacialPlanning } from '@/components/planning/FacialPlanning'
+import { PaymentInfo, PaymentPlan } from '@/components/planning/PaymentInfo'
 import { PdfPreviewModal } from '@/components/documents/PdfPreviewModal'
 import { PatientFormDialog } from '@/components/patients/PatientFormDialog'
 import CadastroTab from '@/components/patients/CadastroTab'
@@ -87,9 +87,8 @@ export default function PacienteDetail() {
   const [imageToDelete, setImageToDelete] = useState<ImageRecord | null>(null)
   const [hoofTreatments, setHoofTreatments] = useState<PlannedTreatment[]>([])
   const [dentalTreatments, setDentalTreatments] = useState<PlannedTreatment[]>([])
-  const [dentalTeeth, setDentalTeeth] = useState<ToothState[]>([])
-  const [paymentMethod, setPaymentMethod] = useState('')
-  const [installments, setInstallments] = useState(1)
+  const [hoofPaymentPlan, setHoofPaymentPlan] = useState<PaymentPlan>({ installments: [] })
+  const [dentalPaymentPlan, setDentalPaymentPlan] = useState<PaymentPlan>({ installments: [] })
 
   const loadAllData = async () => {
     if (!id) return
@@ -379,6 +378,17 @@ export default function PacienteDetail() {
           </TabsContent>
 
           <TabsContent value="planejamento" className="mt-4 space-y-6">
+            <p className="text-xs text-[#6B4F42] bg-white border border-[#EDE3D8] rounded-xl p-3">
+              Clique em uma região da <strong>face ou do pescoço</strong> para planejar os
+              procedimentos de harmonização (sem odontograma). Para anotar sobre uma foto do
+              paciente, use a aba &quot;Fotografias e Radiografias&quot;.
+            </p>
+            <FacialPlanning
+              procedures={procedures}
+              items={hoofTreatments}
+              onChange={setHoofTreatments}
+              patientPhotoUrl={getPatientPhotoUrl(patient)}
+            />
             {selectedImageForPlan ? (
               <Card className="card-warm p-4 space-y-4">
                 <div className="flex justify-between items-center">
@@ -402,37 +412,23 @@ export default function PacienteDetail() {
                 desenho técnico de planejamento HOF.
               </p>
             )}
-            <TreatmentList
-              title="Tratamentos do Planejamento HOF"
-              description="Selecione um procedimento da tabela de preços e ajuste o valor dentro do planejamento."
-              procedures={procedures}
-              items={hoofTreatments}
-              onChange={setHoofTreatments}
-            />
             <PaymentInfo
-              paymentMethod={paymentMethod}
-              onPaymentMethodChange={setPaymentMethod}
-              installments={installments}
-              onInstallmentsChange={setInstallments}
+              plan={hoofPaymentPlan}
+              onPlanChange={setHoofPaymentPlan}
               total={hoofTreatments.reduce((s, t) => s + t.price, 0)}
               formatCurrency={formatCurrency}
             />
           </TabsContent>
 
           <TabsContent value="odontologico" className="mt-4 space-y-6">
-            <Odontogram teeth={dentalTeeth} onChange={setDentalTeeth} />
-            <TreatmentList
-              title="Tratamentos do Planejamento Odontológico"
-              description="Selecione um procedimento da tabela de preços e ajuste o valor dentro do planejamento."
+            <OdontogramNew
               procedures={procedures}
               items={dentalTreatments}
               onChange={setDentalTreatments}
             />
             <PaymentInfo
-              paymentMethod={paymentMethod}
-              onPaymentMethodChange={setPaymentMethod}
-              installments={installments}
-              onInstallmentsChange={setInstallments}
+              plan={dentalPaymentPlan}
+              onPlanChange={setDentalPaymentPlan}
               total={dentalTreatments.reduce((s, t) => s + t.price, 0)}
               formatCurrency={formatCurrency}
             />
@@ -467,7 +463,12 @@ export default function PacienteDetail() {
           </TabsContent>
 
           <TabsContent value="financeiro" className="mt-4">
-            <FinanceiroTab transactions={transactions} />
+            <FinanceiroTab
+              transactions={transactions}
+              patientName={patient.name}
+              patientPhone={patient.phone}
+              onRefresh={loadAllData}
+            />
           </TabsContent>
         </Tabs>
       </div>
