@@ -21,6 +21,8 @@ interface Shape {
 
 export function CanvasAnnotator({ imageUrl, initialAnnotations, onSave }: CanvasAnnotatorProps) {
   const canvasRef = useRef<HTMLCanvasElement | null>(null)
+  /** Imagem já carregada, para redesenhar sem recarregar a cada traço. */
+  const imgRef = useRef<HTMLImageElement | null>(null)
   const [tool, setTool] = useState<'pencil' | 'arrow' | 'circle' | 'text'>('pencil')
   const [color, setColor] = useState<string>('#C66B4D')
   const [isDrawing, setIsDrawing] = useState(false)
@@ -29,6 +31,7 @@ export function CanvasAnnotator({ imageUrl, initialAnnotations, onSave }: Canvas
   const [textInput, setTextInput] = useState('')
   const [textPos, setTextPos] = useState<{ x: number; y: number } | null>(null)
   const [canvasReady, setCanvasReady] = useState(false)
+  const shapesRef = useRef<Shape[]>([])
 
   useEffect(() => {
     if (initialAnnotations) {
@@ -41,38 +44,43 @@ export function CanvasAnnotator({ imageUrl, initialAnnotations, onSave }: Canvas
     }
   }, [initialAnnotations])
 
-  // Ajusta o tamanho do canvas à proporção real da imagem para evitar distorção
   useEffect(() => {
-    const canvas = canvasRef.current
-    if (!canvas) return
+    shapesRef.current = shapes
+    if (canvasReady) drawAll(shapes, currentShape)
+  }, [shapes, currentShape, canvasReady])
+
+  // Ajusta o tamanho do buffer do canvas à proporção real da imagem
+  // (sem esticar horizontalmente) e guarda a imagem carregada em ref.
+  useEffect(() => {
     const img = new Image()
     img.crossOrigin = 'anonymous'
     img.onload = () => {
+      const canvas = canvasRef.current
+      if (!canvas) return
       const maxWidth = 650
       const scale = Math.min(1, maxWidth / img.naturalWidth)
       canvas.width = Math.round(img.naturalWidth * scale)
       canvas.height = Math.round(img.naturalHeight * scale)
+      imgRef.current = img
       setCanvasReady(true)
     }
     img.src = imageUrl
   }, [imageUrl])
 
-  const drawAll = () => {
+  const drawAll = (allShapes: Shape[], drawing?: Shape | null) => {
     const canvas = canvasRef.current
-    if (!canvas) return
-    const ctx = canvas.getContext('2d')
-    if (!ctx) return
+    const ctx = canvas?.getContext('2d')
+    if (!canvas || !ctx) return
 
     ctx.clearRect(0, 0, canvas.width, canvas.height)
 
-    const img = new Image()
-    img.crossOrigin = 'anonymous'
-    img.src = imageUrl
-    img.onload = () => {
-      ctx.drawImage(img, 0, 0, canvas.width, canvas.height)
-
-      const allShapes = [...shapes, ...(currentShape ? [currentShape] : [])]
-      allShapes.forEach((s) => {
+    const paint = () => {
+      ctx.clearRect(0, 0, canvas.width, canvas.height)
+      if (imgRef.current) {
+        ctx.drawImage(imgRef.current, 0, 0, canvas.width, canvas.height)
+      }
+      const list = drawing ? [...allShapes, drawing] : allShapes
+      list.forEach((s) => {
         ctx.strokeStyle = s.color
         ctx.fillStyle = s.color
         ctx.lineWidth = 3
@@ -112,18 +120,41 @@ export function CanvasAnnotator({ imageUrl, initialAnnotations, onSave }: Canvas
         }
       })
     }
+
+    if (imgRef.current && imgRef.current.complete) {
+      paint()
+    } else {
+      const img = new Image()
+      img.crossOrigin = 'anonymous'
+      img.onload = () => {
+        imgRef.current = img
+        paint()
+      }
+      img.src = imageUrl
+    }
   }
 
-  useEffect(() => {
-    if (canvasReady) drawAll()
-  }, [shapes, currentShape, imageUrl, canvasReady])
+  /**
+   * Converte as coordenadas do ponteiro (CSS) para coordenadas do buffer do
+   * canvas. O canvas pode ser exibido menor que seu tamanho interno (CSS
+   * `max-w-full`), então é preciso escalar pelo fator buffer/CSS — é esse
+   * mapeamento que mantém o traço exatamente sob a caneta, alinhado com a
+   * cruz de orientação da foto.
+   */
+  const pointerToCanvas = (e: React.MouseEvent<HTMLCanvasElement>) => {
+    const canvas = canvasRef.current
+    if (!canvas) return { x: 0, y: 0 }
+    const rect = canvas.getBoundingClientRect()
+    const scaleX = canvas.width / rect.width
+    const scaleY = canvas.height / rect.height
+    return {
+      x: (e.clientX - rect.left) * scaleX,
+      y: (e.clientY - rect.top) * scaleY,
+    }
+  }
 
   const handleMouseDown = (e: React.MouseEvent<HTMLCanvasElement>) => {
-    const canvas = canvasRef.current
-    if (!canvas) return
-    const rect = canvas.getBoundingClientRect()
-    const x = e.clientX - rect.left
-    const y = e.clientY - rect.top
+    const { x, y } = pointerToCanvas(e)
 
     if (tool === 'text') {
       setTextPos({ x, y })
@@ -140,11 +171,7 @@ export function CanvasAnnotator({ imageUrl, initialAnnotations, onSave }: Canvas
 
   const handleMouseMove = (e: React.MouseEvent<HTMLCanvasElement>) => {
     if (!isDrawing || !currentShape) return
-    const canvas = canvasRef.current
-    if (!canvas) return
-    const rect = canvas.getBoundingClientRect()
-    const x = e.clientX - rect.left
-    const y = e.clientY - rect.top
+    const { x, y } = pointerToCanvas(e)
 
     if (tool === 'pencil') {
       setCurrentShape({
@@ -183,7 +210,7 @@ export function CanvasAnnotator({ imageUrl, initialAnnotations, onSave }: Canvas
   const handleClear = () => setShapes([])
 
   const handleSaveClick = () => {
-    onSave(JSON.stringify(shapes))
+    onSave(JSON.stringify(shapesRef.current))
   }
 
   return (

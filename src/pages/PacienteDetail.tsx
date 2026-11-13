@@ -97,6 +97,7 @@ export default function PacienteDetail() {
   const [dentalTreatments, setDentalTreatments] = useState<PlannedTreatment[]>([])
   const [hoofPaymentPlan, setHoofPaymentPlan] = useState<PaymentPlan>({ installments: [] })
   const [dentalPaymentPlan, setDentalPaymentPlan] = useState<PaymentPlan>({ installments: [] })
+  const [hofAnnotations, setHofAnnotations] = useState<string | null>(null)
 
   // Converte os registros persistidos (JSON em virtual_plans) para o formato dos componentes
   const mapTreatmentRecords = (recs: TreatmentItemRecord[]): PlannedTreatment[] =>
@@ -161,6 +162,37 @@ export default function PacienteDetail() {
     persistPlanning('hof', hofPlanRecord, hoofTreatments, hoofPaymentPlan)
   }, [hoofTreatments, hoofPaymentPlan, hofPlanRecord])
 
+  // Salva as anotações de desenho livre do HOF (botão "Salvar Plano" do canvas)
+  const handleSaveHofAnnotations = (annotationsJson: string) => {
+    setHofAnnotations(annotationsJson)
+    if (!hofPlanRecord) {
+      toast({ title: 'Planejamento HOF salvo com sucesso!' })
+      return
+    }
+    savePlanningState(hofPlanRecord, {
+      treatments: hoofTreatments.map((t) => ({
+        id: t.id,
+        procedureId: t.procedureId,
+        procedureName: t.procedureName,
+        tooth: t.tooth,
+        region: t.region,
+        faces: t.faces,
+        price: t.price,
+      })),
+      paymentPlan: hoofPaymentPlan.installments.map((i) => ({
+        id: i.id,
+        kind: i.kind,
+        method: i.method,
+        amount: i.amount,
+        due_date: i.due_date,
+        installments_count: i.installments_count ?? 1,
+      })),
+      annotations: annotationsJson,
+    })
+      .then(() => toast({ title: 'Desenho salvo com sucesso!' }))
+      .catch(() => toast({ title: 'Erro ao salvar o desenho', variant: 'destructive' }))
+  }
+
   useEffect(() => {
     persistPlanning('odontologico', dentalPlanRecord, dentalTreatments, dentalPaymentPlan)
   }, [dentalTreatments, dentalPaymentPlan, dentalPlanRecord])
@@ -192,6 +224,7 @@ export default function PacienteDetail() {
         setHofPlanRecord(hofPlan.plan)
         setHoofTreatments(mapTreatmentRecords(hofPlan.state.treatments))
         setHoofPaymentPlan({ installments: hofPlan.state.paymentPlan.map(mapPaymentRecord) })
+        setHofAnnotations(hofPlan.state.annotations ?? null)
       }
       if (dentPlan) {
         setDentalPlanRecord(dentPlan.plan)
@@ -486,6 +519,8 @@ export default function PacienteDetail() {
                   ? getImageUrl(selectedImageForPlan)
                   : getPatientPhotoUrl(patient)
               }
+              initialAnnotations={hofAnnotations}
+              onSaveAnnotations={handleSaveHofAnnotations}
             />
             <PaymentInfo
               plan={hoofPaymentPlan}

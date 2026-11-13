@@ -9,7 +9,7 @@ import {
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
-import { Plus, Trash2 } from 'lucide-react'
+import { Plus, Trash2, Wand2 } from 'lucide-react'
 
 export interface PaymentInstallment {
   id: string
@@ -60,31 +60,32 @@ export function defaultPaymentPlan(total: number): PaymentPlan {
         method: 'boleto',
         amount: Math.round((total - entrada) * 100) / 100,
         due_date: addDaysISO(today, 30),
+        installments_count: 1,
       },
     ],
   }
 }
 
-/** Distribui o total restante em N parcelas iguais, com vencimentos mensais a partir da entrada. */
-export function splitIntoInstallments(
-  plan: PaymentPlan,
-  total: number,
+/** Distribui um valor total em N parcelas iguais, com vencimentos mensais. */
+function makeInstallments(
+  valorTotal: number,
   count: number,
   method: string,
   firstDueDate: string,
-): PaymentPlan {
-  const entradas = plan.installments.filter((i) => i.kind === 'entrada')
-  const entradaTotal = entradas.reduce((s, i) => s + (i.amount || 0), 0)
-  const restante = Math.max(0, Math.round((total - entradaTotal) * 100) / 100)
-  const per = Math.round((restante / count) * 100) / 100
-  const parcelas: PaymentInstallment[] = Array.from({ length: count }, (_, i) => ({
+  intervalDays: number,
+): PaymentInstallment[] {
+  const per = Math.round((valorTotal / count) * 100) / 100
+  // Ajusta a última parcela para absorver centavos de arredondamento
+  const somaAtual = per * (count - 1)
+  const ultima = Math.round((valorTotal - somaAtual) * 100) / 100
+  return Array.from({ length: count }, (_, i) => ({
     id: newId(),
     kind: 'parcela' as const,
     method,
-    amount: per,
-    due_date: addDaysISO(firstDueDate, 30 * (i + 1)),
+    amount: i === count - 1 ? ultima : per,
+    due_date: addDaysISO(firstDueDate, intervalDays * i),
+    installments_count: count,
   }))
-  return { installments: [...entradas, ...parcelas] }
 }
 
 interface Props {
@@ -116,6 +117,7 @@ export function PaymentInfo({ plan, onPlanChange, total, formatCurrency }: Props
           method: 'pix',
           amount: 0,
           due_date: new Date().toISOString().slice(0, 10),
+          installments_count: 1,
         },
       ],
     })
@@ -161,93 +163,188 @@ export function PaymentInfo({ plan, onPlanChange, total, formatCurrency }: Props
       )}
 
       <div className="space-y-2">
-        {items.map((i) => (
-          <div
-            key={i.id}
-            className="grid grid-cols-2 sm:grid-cols-14 gap-2 items-end bg-white border border-[#EDE3D8] rounded-xl p-2"
-          >
-            <div className="sm:col-span-2 space-y-1">
-              <Label className="text-[10px] font-semibold">Tipo</Label>
-              <Select
-                value={i.kind}
-                onValueChange={(v) => update(i.id, { kind: v as 'entrada' | 'parcela' })}
-              >
-                <SelectTrigger className="w-full bg-white text-xs">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="entrada" className="text-xs">
-                    Entrada
-                  </SelectItem>
-                  <SelectItem value="parcela" className="text-xs">
-                    Parcela
-                  </SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
-            <div className="sm:col-span-3 space-y-1">
-              <Label className="text-[10px] font-semibold">Meio</Label>
-              <Select value={i.method} onValueChange={(v) => update(i.id, { method: v })}>
-                <SelectTrigger className="w-full bg-white text-xs">
-                  <SelectValue placeholder="Selecione" />
-                </SelectTrigger>
-                <SelectContent>
-                  {PAYMENT_METHODS.map((m) => (
-                    <SelectItem key={m.value} value={m.value} className="text-xs">
-                      {m.label}
+        {items.map((i) => {
+          const isEntrada = i.kind === 'entrada'
+          return (
+            <div
+              key={i.id}
+              className={`grid grid-cols-2 sm:grid-cols-14 gap-2 items-end bg-white border rounded-xl p-2 ${
+                isEntrada ? 'border-[#D4AF37]' : 'border-[#EDE3D8]'
+              }`}
+            >
+              {/* Tipo (Entrada/Parcela) — apenas rótulo visual + seleção */}
+              <div className="sm:col-span-2 space-y-1">
+                <Label className="text-[10px] font-semibold">Tipo</Label>
+                <Select
+                  value={i.kind}
+                  onValueChange={(v) => update(i.id, { kind: v as 'entrada' | 'parcela' })}
+                >
+                  <SelectTrigger className="w-full bg-white text-xs">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="entrada" className="text-xs">
+                      Entrada
                     </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
+                    <SelectItem value="parcela" className="text-xs">
+                      Parcela
+                    </SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+
+              {/* Meio (Pix, cartão, boleto...) — editável em qualquer linha */}
+              <div className="sm:col-span-3 space-y-1">
+                <Label className="text-[10px] font-semibold">Meio</Label>
+                <Select value={i.method} onValueChange={(v) => update(i.id, { method: v })}>
+                  <SelectTrigger className="w-full bg-white text-xs">
+                    <SelectValue placeholder="Selecione" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {PAYMENT_METHODS.map((m) => (
+                      <SelectItem key={m.value} value={m.value} className="text-xs">
+                        {m.label}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+
+              {/* ENTRADA: valor direto + data da entrada */}
+              {isEntrada ? (
+                <>
+                  <div className="sm:col-span-2 space-y-1">
+                    <Label className="text-[10px] font-semibold">Valor da entrada (R$)</Label>
+                    <Input
+                      type="number"
+                      min={0}
+                      step="0.01"
+                      value={i.amount}
+                      onChange={(e) => update(i.id, { amount: Number(e.target.value) })}
+                      className="text-xs"
+                    />
+                  </div>
+                  <div className="sm:col-span-3 space-y-1">
+                    <Label className="text-[10px] font-semibold">Data da entrada</Label>
+                    <Input
+                      type="date"
+                      value={i.due_date}
+                      onChange={(e) => update(i.id, { due_date: e.target.value })}
+                      className="text-xs"
+                    />
+                  </div>
+                  <div className="sm:col-span-4 flex items-end justify-end gap-1">
+                    <Button
+                      size="sm"
+                      type="button"
+                      variant="ghost"
+                      className="w-8 h-8 p-0 text-red-600 hover:bg-red-50"
+                      onClick={() => remove(i.id)}
+                      title="Remover entrada"
+                    >
+                      <Trash2 className="w-3.5 h-3.5" />
+                    </Button>
+                  </div>
+                </>
+              ) : (
+                /* PARCELA: informar VALOR TOTAL + Nº e deixar o sistema calcular */
+                <>
+                  <div className="sm:col-span-2 space-y-1">
+                    <Label className="text-[10px] font-semibold">Valor total (R$)</Label>
+                    <Input
+                      type="number"
+                      min={0}
+                      step="0.01"
+                      value={i.amount}
+                      onChange={(e) => update(i.id, { amount: Number(e.target.value) })}
+                      className="text-xs"
+                    />
+                  </div>
+                  <div className="sm:col-span-2 space-y-1">
+                    <Label className="text-[10px] font-semibold">Nº de parcelas</Label>
+                    <Input
+                      type="number"
+                      min={1}
+                      step={1}
+                      value={i.installments_count ?? 1}
+                      onChange={(e) =>
+                        update(i.id, {
+                          installments_count: Math.max(1, Number(e.target.value) || 1),
+                        })
+                      }
+                      className="text-xs"
+                    />
+                  </div>
+                  <div className="sm:col-span-3 space-y-1">
+                    <Label className="text-[10px] font-semibold">Vencimento (1ª)</Label>
+                    <Input
+                      type="date"
+                      value={i.due_date}
+                      onChange={(e) => update(i.id, { due_date: e.target.value })}
+                      className="text-xs"
+                    />
+                  </div>
+                  <div className="sm:col-span-4 flex items-end justify-end gap-1">
+                    {(i.installments_count ?? 1) > 1 && (
+                      <div className="text-right mr-1">
+                        <Label className="text-[9px] font-semibold block text-[#6B4F42]">
+                          Cada parcela
+                        </Label>
+                        <span className="text-[11px] font-bold text-[#C66B4D]">
+                          {formatCurrency(
+                            Math.round((i.amount / (i.installments_count ?? 1)) * 100) / 100,
+                          )}
+                        </span>
+                      </div>
+                    )}
+                    <Button
+                      size="sm"
+                      type="button"
+                      variant="ghost"
+                      className="w-8 h-8 p-0 text-red-600 hover:bg-red-50"
+                      onClick={() => remove(i.id)}
+                      title="Remover parcela"
+                    >
+                      <Trash2 className="w-3.5 h-3.5" />
+                    </Button>
+                  </div>
+                </>
+              )}
             </div>
-            <div className="sm:col-span-2 space-y-1">
-              <Label className="text-[10px] font-semibold">Nº de parcelas</Label>
-              <Input
-                type="number"
-                min={1}
-                step={1}
-                value={i.installments_count ?? 1}
-                onChange={(e) =>
-                  update(i.id, { installments_count: Math.max(1, Number(e.target.value) || 1) })
-                }
-                className="text-xs"
-              />
-            </div>
-            <div className="sm:col-span-2 space-y-1">
-              <Label className="text-[10px] font-semibold">Valor (R$)</Label>
-              <Input
-                type="number"
-                min={0}
-                step="0.01"
-                value={i.amount}
-                onChange={(e) => update(i.id, { amount: Number(e.target.value) })}
-                className="text-xs"
-              />
-            </div>
-            <div className="sm:col-span-4 space-y-1">
-              <Label className="text-[10px] font-semibold">Vencimento</Label>
-              <Input
-                type="date"
-                value={i.due_date}
-                onChange={(e) => update(i.id, { due_date: e.target.value })}
-                className="text-xs"
-              />
-            </div>
-            <div className="sm:col-span-1 flex justify-end">
-              <Button
-                size="sm"
-                type="button"
-                variant="outline"
-                className="w-8 h-8 p-0 text-red-600 border-red-200 hover:bg-red-50"
-                onClick={() => remove(i.id)}
-                title="Remover"
-              >
-                <Trash2 className="w-3.5 h-3.5" />
-              </Button>
-            </div>
-          </div>
-        ))}
+          )
+        })}
       </div>
+
+      {/* Botão que gera as parcelas individuais a partir da linha informada */}
+      {items.some((i) => i.kind === 'parcela' && (i.installments_count ?? 1) > 1) && (
+        <div className="flex justify-end">
+          <Button
+            size="sm"
+            type="button"
+            className="btn-terracotta-gold text-xs"
+            onClick={() => {
+              // Para cada linha de parcela com N>1, substitui por N parcelas individuais
+              const novas: PaymentInstallment[] = []
+              items.forEach((i) => {
+                const n = i.kind === 'parcela' ? (i.installments_count ?? 1) : 1
+                if (n <= 1) {
+                  novas.push(i)
+                } else {
+                  novas.push(
+                    ...makeInstallments(i.amount, n, i.method, i.due_date, 30).map((p) => ({
+                      ...p,
+                      installments_count: 1,
+                    })),
+                  )
+                }
+              })
+              onPlanChange({ installments: novas })
+            }}
+          >
+            <Wand2 className="w-3.5 h-3.5 mr-1" /> Gerar parcelas individuais
+          </Button>
+        </div>
+      )}
 
       <div className="flex flex-wrap justify-end items-center gap-3 border-t border-[#EDE3D8] pt-2 text-xs">
         <span className="text-[#6B4F42]">

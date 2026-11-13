@@ -4,7 +4,6 @@ import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { CanvasAnnotator } from '@/components/virtual-planning/CanvasAnnotator'
-import { toast } from '@/hooks/use-toast'
 import {
   Select,
   SelectContent,
@@ -24,6 +23,10 @@ interface Props {
   onChange: (items: TreatmentItem[]) => void
   /** Foto do paciente exibida para referência/desenho livre (CanvasAnnotator). */
   patientPhotoUrl?: string | null
+  /** Anotações de desenho já persistidas (JSON do CanvasAnnotator). */
+  initialAnnotations?: string | null
+  /** Salva as anotações do desenho (virtual_plans.annotations). */
+  onSaveAnnotations: (annotationsJson: string) => void
 }
 
 /**
@@ -31,7 +34,14 @@ interface Props {
  * com anotação/desenho livre quando uma foto foi escolhida na galeria, e uma
  * tabela abaixo da foto para inserir procedimentos com preço editável.
  */
-export function FacialPlanning({ procedures, items, onChange, patientPhotoUrl }: Props) {
+export function FacialPlanning({
+  procedures,
+  items,
+  onChange,
+  patientPhotoUrl,
+  initialAnnotations,
+  onSaveAnnotations,
+}: Props) {
   const [newProcedureId, setNewProcedureId] = useState<string>(procedures[0]?.id || '')
   const [newPrice, setNewPrice] = useState<string>('')
 
@@ -64,7 +74,8 @@ export function FacialPlanning({ procedures, items, onChange, patientPhotoUrl }:
         {patientPhotoUrl ? (
           <CanvasAnnotator
             imageUrl={patientPhotoUrl}
-            onSave={() => toast({ title: 'Planejamento HOF salvo com sucesso!' })}
+            initialAnnotations={initialAnnotations || undefined}
+            onSave={onSaveAnnotations}
           />
         ) : (
           <img
