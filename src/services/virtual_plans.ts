@@ -87,15 +87,10 @@ export const createNewPlan = (patientId: string, kind: PlanKind): Promise<Virtua
 }
 
 /** Carrega um planejamento específico já criado. */
-export const loadPlanningState = (
-  plan: VirtualPlanRecord,
-): { plan: VirtualPlanRecord; state: PlanningState } => ({
-  plan,
-  state: {
-    treatments: Array.isArray(plan.treatments) ? plan.treatments : [],
-    paymentPlan: Array.isArray(plan.payment_plan) ? plan.payment_plan : [],
-    annotations: typeof plan.annotations === 'string' ? plan.annotations : null,
-  },
+export const loadPlanningState = (plan: VirtualPlanRecord): PlanningState => ({
+  treatments: Array.isArray(plan.treatments) ? plan.treatments : [],
+  paymentPlan: Array.isArray(plan.payment_plan) ? plan.payment_plan : [],
+  annotations: typeof plan.annotations === 'string' ? plan.annotations : null,
 })
 
 /** Salva (debounce externo) os tratamentos e o plano de pagamento do plano. */

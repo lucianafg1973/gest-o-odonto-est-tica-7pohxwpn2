@@ -25,6 +25,10 @@ migrate(
       col.fields.add(new DateField({ name: 'plan_date' }))
     }
 
+    // Salva primeiro (cria as colunas), só depois cria o índice e faz o backfill —
+    // o índice referencia approval_status/plan_date, que precisam existir como coluna.
+    app.save(col)
+
     // Backfill idempotente: rascunho por padrão e plan_date = created
     app
       .db()
@@ -41,11 +45,11 @@ migrate(
   },
   (app) => {
     const col = app.findCollectionByNameOrId('virtual_plans')
+    col.removeIndex('idx_vplans_patient_date')
     ;['approval_status', 'approved_at', 'plan_date'].forEach((f) => {
       const field = col.fields.getByName(f)
       if (field) col.fields.removeByName(f)
     })
-    col.removeIndex('idx_vplans_patient_date')
     app.save(col)
   },
 )

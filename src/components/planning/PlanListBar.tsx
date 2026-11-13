@@ -106,12 +106,7 @@ export function PlanListBar({
                     'Rascunho'
                   )}
                 </Badge>
-                {aprovado && (
-                  <Printer
-                    className="w-3.5 h-3.5 text-[#6B4F42]"
-                    title="Aprovado — pode imprimir"
-                  />
-                )}
+                {aprovado && <Printer className="w-3.5 h-3.5 text-[#6B4F42]" />}
                 <span className="flex items-center gap-1 text-[10px] text-[#6B4F42]">
                   <Clock className="w-3 h-3" /> {formatDateBR(p.plan_date || p.created)}
                 </span>
