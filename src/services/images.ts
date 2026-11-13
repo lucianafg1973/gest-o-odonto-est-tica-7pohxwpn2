@@ -18,6 +18,8 @@ export const getPatientImages = (patientId: string) =>
 export const uploadPatientImage = (formData: FormData) =>
   pb.collection('images').create<ImageRecord>(formData)
 
+export const deletePatientImage = (imageId: string) => pb.collection('images').delete(imageId)
+
 export function getImageUrl(record: ImageRecord) {
   if (!record || !record.file) return ''
   return pb.files.getURL(record, record.file)

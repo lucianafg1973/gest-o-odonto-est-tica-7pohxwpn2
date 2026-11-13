@@ -10,6 +10,21 @@ export interface PatientRecord {
   address?: string
   medical_notes?: string
   photo?: string
+  identity_rg?: string
+  preferred_name?: string
+  kinship?: string
+  referred_by_name?: string
+  gender?: 'feminino' | 'masculino' | 'outro' | 'nao_informado'
+  referral_source?:
+    | 'instagram'
+    | 'google'
+    | 'facebook'
+    | 'linkedin'
+    | 'tiktok'
+    | 'indicacao_cliente'
+    | 'fachada'
+    | 'outro'
+  referred_by?: string
   created: string
   updated: string
 }

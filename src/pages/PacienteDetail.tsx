@@ -1,40 +1,65 @@
 import { useEffect, useState, useRef } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
-import { getPatient, PatientRecord } from '@/services/patients'
+import { getPatient, getPatientPhotoUrl, PatientRecord } from '@/services/patients'
 import {
   getMedicalRecordsByPatient,
   createMedicalRecord,
   MedicalRecordItem,
 } from '@/services/medical_records'
-import { getPatientImages, uploadPatientImage, getImageUrl, ImageRecord } from '@/services/images'
+import {
+  getPatientImages,
+  uploadPatientImage,
+  deletePatientImage,
+  getImageUrl,
+  ImageRecord,
+} from '@/services/images'
 import { getVirtualPlans, VirtualPlanRecord } from '@/services/virtual_plans'
 import { getDocuments, DocumentRecord } from '@/services/documents'
 import { getFinancialTransactions, FinancialTransactionRecord } from '@/services/financial'
 import { getMessagesByPatient, MessageRecord } from '@/services/messages'
+import { getProcedures } from '@/services/procedures'
+import { ProcedureRecord } from '@/services/procedures'
 import { CanvasAnnotator } from '@/components/virtual-planning/CanvasAnnotator'
+import { Odontogram, ToothState } from '@/components/planning/Odontogram'
+import { TreatmentList } from '@/components/planning/TreatmentList'
+import { formatCurrency } from '@/lib/price-calculation'
+import { PaymentInfo } from '@/components/planning/PaymentInfo'
 import { PdfPreviewModal } from '@/components/documents/PdfPreviewModal'
 import { PatientFormDialog } from '@/components/patients/PatientFormDialog'
-import { CadastroTab } from '@/components/patients/CadastroTab'
+import CadastroTab from '@/components/patients/CadastroTab'
 import { FinanceiroTab } from '@/components/patients/FinanceiroTab'
+import { DocumentTemplates } from '@/components/documents/DocumentTemplates'
 import {
   FileText,
   Image as ImageIcon,
   Sparkles,
   DollarSign,
-  MessageCircle,
   AlertTriangle,
   Upload,
   ChevronLeft,
   Pencil,
   User,
+  Trash2,
 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
-import { Avatar, AvatarFallback } from '@/components/ui/avatar'
+import { Avatar, AvatarImage, AvatarFallback } from '@/components/ui/avatar'
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from '@/components/ui/alert-dialog'
 import { toast } from '@/hooks/use-toast'
+
+export type PlannedTreatment = import('@/components/planning/TreatmentList').TreatmentItem
 
 export default function PacienteDetail() {
   const { id } = useParams<{ id: string }>()
@@ -46,7 +71,8 @@ export default function PacienteDetail() {
   const [plans, setPlans] = useState<VirtualPlanRecord[]>([])
   const [documents, setDocuments] = useState<DocumentRecord[]>([])
   const [transactions, setTransactions] = useState<FinancialTransactionRecord[]>([])
-  const [messages, setMessages] = useState<MessageRecord[]>([])
+  const [messages] = useState<MessageRecord[]>([])
+  const [procedures, setProcedures] = useState<ProcedureRecord[]>([])
 
   const [anamnesis, setAnamnesis] = useState('')
   const [diagnosis, setDiagnosis] = useState('')
@@ -58,7 +84,12 @@ export default function PacienteDetail() {
   const [previewDoc, setPreviewDoc] = useState<DocumentRecord | null>(null)
 
   const [editOpen, setEditOpen] = useState(false)
-  const tabsRef = useRef<HTMLDivElement>(null)
+  const [imageToDelete, setImageToDelete] = useState<ImageRecord | null>(null)
+  const [hoofTreatments, setHoofTreatments] = useState<PlannedTreatment[]>([])
+  const [dentalTreatments, setDentalTreatments] = useState<PlannedTreatment[]>([])
+  const [dentalTeeth, setDentalTeeth] = useState<ToothState[]>([])
+  const [paymentMethod, setPaymentMethod] = useState('')
+  const [installments, setInstallments] = useState(1)
 
   const loadAllData = async () => {
     if (!id) return
@@ -75,8 +106,7 @@ export default function PacienteDetail() {
       setDocuments(docs)
       const trans = await getFinancialTransactions(`patient="${id}"`)
       setTransactions(trans)
-      const msgs = await getMessagesByPatient(id)
-      setMessages(msgs)
+      setProcedures(await getProcedures())
     } catch {
       /* intentionally ignored */
     }
@@ -85,6 +115,19 @@ export default function PacienteDetail() {
   useEffect(() => {
     loadAllData()
   }, [id])
+
+  const confirmDeleteImage = async () => {
+    if (!imageToDelete) return
+    try {
+      await deletePatientImage(imageToDelete.id)
+      toast({ title: 'Imagem excluída com sucesso!' })
+      if (selectedImageForPlan?.id === imageToDelete.id) setSelectedImageForPlan(null)
+      setImageToDelete(null)
+      loadAllData()
+    } catch (_) {
+      toast({ title: 'Erro ao excluir a imagem', variant: 'destructive' })
+    }
+  }
 
   const handleAddMedicalRecord = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -129,6 +172,7 @@ export default function PacienteDetail() {
     return <div className="p-8 text-center text-xs text-[#6B4F42]">Carregando paciente...</div>
 
   const tabTriggerClass = 'text-xs data-[state=active]:bg-[#C66B4D] data-[state=active]:text-white'
+  const photoUrl = getPatientPhotoUrl(patient)
 
   return (
     <div className="space-y-6">
@@ -137,13 +181,18 @@ export default function PacienteDetail() {
           <ChevronLeft className="w-5 h-5 text-[#2D1B14]" />
         </Button>
         <div className="flex items-center gap-3">
-          <Avatar className="w-12 h-12 border-2 border-[#D4AF37]">
+          <Avatar className="w-14 h-14 border-2 border-[#D4AF37]">
+            {photoUrl && <AvatarImage src={photoUrl} alt={patient.name} />}
             <AvatarFallback className="bg-[#C66B4D] text-white font-bold">
               {patient.name.slice(0, 2).toUpperCase()}
             </AvatarFallback>
           </Avatar>
           <div>
-            <h2 className="font-serif-title text-xl font-bold text-[#2D1B14]">{patient.name}</h2>
+            <h2 className="font-serif-title text-xl font-bold text-[#2D1B14]">
+              {patient.preferred_name
+                ? `${patient.name} (${patient.preferred_name})`
+                : patient.name}
+            </h2>
             <p className="text-xs text-[#6B4F42]">
               Tel: {patient.phone} | CPF: {patient.cpf || 'Não informado'}
             </p>
@@ -168,7 +217,7 @@ export default function PacienteDetail() {
         </div>
       )}
 
-      <div ref={tabsRef}>
+      <div>
         <Tabs defaultValue="cadastro" className="w-full">
           <TabsList className="bg-white border border-[#EDE3D8] p-1 rounded-xl flex-wrap h-auto gap-1">
             <TabsTrigger value="cadastro" className={tabTriggerClass}>
@@ -183,6 +232,9 @@ export default function PacienteDetail() {
             <TabsTrigger value="planejamento" className={tabTriggerClass}>
               <Sparkles className="w-3.5 h-3.5 mr-1" /> Planejamento HOF
             </TabsTrigger>
+            <TabsTrigger value="odontologico" className={tabTriggerClass}>
+              <Sparkles className="w-3.5 h-3.5 mr-1" /> Planejamento Odontológico
+            </TabsTrigger>
             <TabsTrigger value="documentos" className={tabTriggerClass}>
               <FileText className="w-3.5 h-3.5 mr-1" /> Documentos
             </TabsTrigger>
@@ -192,7 +244,7 @@ export default function PacienteDetail() {
           </TabsList>
 
           <TabsContent value="cadastro" className="mt-4">
-            <CadastroTab patient={patient} onEdit={() => setEditOpen(true)} />
+            <CadastroTab patient={patient} />
           </TabsContent>
 
           <TabsContent value="prontuario" className="mt-4 space-y-6">
@@ -287,7 +339,7 @@ export default function PacienteDetail() {
               {images.map((img) => (
                 <div
                   key={img.id}
-                  className="bg-white border border-[#EDE3D8] p-2 rounded-xl text-center space-y-2"
+                  className="bg-white border border-[#EDE3D8] p-2 rounded-xl text-center space-y-2 relative"
                 >
                   <img
                     src={getImageUrl(img)}
@@ -297,17 +349,33 @@ export default function PacienteDetail() {
                   <p className="text-[11px] font-semibold text-[#2D1B14]">
                     {img.image_type?.toUpperCase()}
                   </p>
-                  <Button
-                    size="sm"
-                    variant="outline"
-                    className="w-full text-[10px] text-[#C66B4D]"
-                    onClick={() => setSelectedImageForPlan(img)}
-                  >
-                    Anotar no Plano HOF
-                  </Button>
+                  <div className="flex gap-1">
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      className="flex-1 text-[10px] text-[#C66B4D]"
+                      onClick={() => setSelectedImageForPlan(img)}
+                    >
+                      Anotar no Plano HOF
+                    </Button>
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      className="w-9 px-0 text-[10px] text-red-600 border-red-200 hover:bg-red-50"
+                      onClick={() => setImageToDelete(img)}
+                      title="Excluir foto"
+                    >
+                      <Trash2 className="w-3.5 h-3.5" />
+                    </Button>
+                  </div>
                 </div>
               ))}
             </div>
+            {images.length === 0 && (
+              <p className="text-xs text-[#6B4F42] text-center py-6">
+                Nenhuma foto ou radiografia cadastrada ainda.
+              </p>
+            )}
           </TabsContent>
 
           <TabsContent value="planejamento" className="mt-4 space-y-6">
@@ -330,13 +398,48 @@ export default function PacienteDetail() {
               </Card>
             ) : (
               <p className="text-xs text-[#6B4F42] py-8 text-center bg-white border rounded-xl">
-                Selecione uma foto na aba "Fotografias e Radiografias" para iniciar o desenho
-                técnico de planejamento HOF.
+                Selecione uma foto na aba &quot;Fotografias e Radiografias&quot; para iniciar o
+                desenho técnico de planejamento HOF.
               </p>
             )}
+            <TreatmentList
+              title="Tratamentos do Planejamento HOF"
+              description="Selecione um procedimento da tabela de preços e ajuste o valor dentro do planejamento."
+              procedures={procedures}
+              items={hoofTreatments}
+              onChange={setHoofTreatments}
+            />
+            <PaymentInfo
+              paymentMethod={paymentMethod}
+              onPaymentMethodChange={setPaymentMethod}
+              installments={installments}
+              onInstallmentsChange={setInstallments}
+              total={hoofTreatments.reduce((s, t) => s + t.price, 0)}
+              formatCurrency={formatCurrency}
+            />
+          </TabsContent>
+
+          <TabsContent value="odontologico" className="mt-4 space-y-6">
+            <Odontogram teeth={dentalTeeth} onChange={setDentalTeeth} />
+            <TreatmentList
+              title="Tratamentos do Planejamento Odontológico"
+              description="Selecione um procedimento da tabela de preços e ajuste o valor dentro do planejamento."
+              procedures={procedures}
+              items={dentalTreatments}
+              onChange={setDentalTreatments}
+            />
+            <PaymentInfo
+              paymentMethod={paymentMethod}
+              onPaymentMethodChange={setPaymentMethod}
+              installments={installments}
+              onInstallmentsChange={setInstallments}
+              total={dentalTreatments.reduce((s, t) => s + t.price, 0)}
+              formatCurrency={formatCurrency}
+            />
           </TabsContent>
 
           <TabsContent value="documentos" className="mt-4 space-y-3">
+            <DocumentTemplates patient={patient} />
             {documents.map((doc) => (
               <Card
                 key={doc.id}
@@ -379,6 +482,29 @@ export default function PacienteDetail() {
           dateStr={new Date(previewDoc.created).toLocaleDateString('pt-BR')}
         />
       )}
+
+      <AlertDialog open={!!imageToDelete} onOpenChange={(o) => !o && setImageToDelete(null)}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle className="font-serif-title text-[#2D1B14]">
+              Excluir esta foto?
+            </AlertDialogTitle>
+            <AlertDialogDescription className="text-xs text-[#6B4F42]">
+              A foto &quot;{imageToDelete?.image_type}&quot; será removida permanentemente do
+              prontuário. Esta ação não pode ser desfeita.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel className="text-xs">Cancelar</AlertDialogCancel>
+            <AlertDialogAction
+              className="bg-red-600 hover:bg-red-700 text-white text-xs"
+              onClick={confirmDeleteImage}
+            >
+              Sim, excluir foto
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
 
       <PatientFormDialog
         open={editOpen}

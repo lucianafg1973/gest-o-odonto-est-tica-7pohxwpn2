@@ -28,6 +28,7 @@ export function CanvasAnnotator({ imageUrl, initialAnnotations, onSave }: Canvas
   const [currentShape, setCurrentShape] = useState<Shape | null>(null)
   const [textInput, setTextInput] = useState('')
   const [textPos, setTextPos] = useState<{ x: number; y: number } | null>(null)
+  const [canvasReady, setCanvasReady] = useState(false)
 
   useEffect(() => {
     if (initialAnnotations) {
@@ -39,6 +40,22 @@ export function CanvasAnnotator({ imageUrl, initialAnnotations, onSave }: Canvas
       }
     }
   }, [initialAnnotations])
+
+  // Ajusta o tamanho do canvas à proporção real da imagem para evitar distorção
+  useEffect(() => {
+    const canvas = canvasRef.current
+    if (!canvas) return
+    const img = new Image()
+    img.crossOrigin = 'anonymous'
+    img.onload = () => {
+      const maxWidth = 650
+      const scale = Math.min(1, maxWidth / img.naturalWidth)
+      canvas.width = Math.round(img.naturalWidth * scale)
+      canvas.height = Math.round(img.naturalHeight * scale)
+      setCanvasReady(true)
+    }
+    img.src = imageUrl
+  }, [imageUrl])
 
   const drawAll = () => {
     const canvas = canvasRef.current
@@ -98,8 +115,8 @@ export function CanvasAnnotator({ imageUrl, initialAnnotations, onSave }: Canvas
   }
 
   useEffect(() => {
-    drawAll()
-  }, [shapes, currentShape, imageUrl])
+    if (canvasReady) drawAll()
+  }, [shapes, currentShape, imageUrl, canvasReady])
 
   const handleMouseDown = (e: React.MouseEvent<HTMLCanvasElement>) => {
     const canvas = canvasRef.current
@@ -255,8 +272,6 @@ export function CanvasAnnotator({ imageUrl, initialAnnotations, onSave }: Canvas
       <div className="relative border border-[#EDE3D8] rounded-xl overflow-hidden bg-black/5 flex justify-center">
         <canvas
           ref={canvasRef}
-          width={650}
-          height={450}
           onMouseDown={handleMouseDown}
           onMouseMove={handleMouseMove}
           onMouseUp={handleMouseUp}

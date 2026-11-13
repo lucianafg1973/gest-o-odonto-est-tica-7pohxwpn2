@@ -1,103 +1,203 @@
-import { PatientRecord } from '@/services/patients'
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
-import { Button } from '@/components/ui/button'
+import { PatientRecord, getPatientPhotoUrl } from '@/services/patients'
 import { Badge } from '@/components/ui/badge'
-import { Pencil, Cake, CreditCard, Phone, Mail, MapPin, StickyNote } from 'lucide-react'
+import { Button } from '@/components/ui/button'
+import { Label } from '@/components/ui/label'
+import { Input } from '@/components/ui/input'
+import { Camera, Upload, X, Trash2 } from 'lucide-react'
+import { useRef, useState } from 'react'
+import { CameraCapture } from '@/components/patients/CameraCapture'
+import { updatePatient } from '@/services/patients'
+import { toast } from '@/hooks/use-toast'
 
 interface Props {
-  patient: PatientRecord
-  onEdit: () => void
+  patient: PatientRecord | null
+  onPatientUpdated?: (p: PatientRecord) => void
 }
 
-function formatBirthDate(birth?: string) {
-  if (!birth) return null
-  const d = new Date(birth.slice(0, 10) + 'T00:00:00')
-  if (isNaN(d.getTime())) return null
-  return d.toLocaleDateString('pt-BR')
+const GENDER_LABELS: Record<string, string> = {
+  feminino: 'Feminino',
+  masculino: 'Masculino',
+  outro: 'Outro',
+  nao_informado: 'Não informado',
 }
 
-function calcAge(birth?: string) {
-  if (!birth) return null
-  const d = new Date(birth.slice(0, 10) + 'T00:00:00')
-  if (isNaN(d.getTime())) return null
-  const today = new Date()
-  let age = today.getFullYear() - d.getFullYear()
-  const m = today.getMonth() - d.getMonth()
-  if (m < 0 || (m === 0 && today.getDate() < d.getDate())) age--
-  return age
+const REFERRAL_LABELS: Record<string, string> = {
+  instagram: 'Instagram',
+  google: 'Google',
+  facebook: 'Facebook',
+  linkedin: 'LinkedIn',
+  tiktok: 'TikTok',
+  indicacao_cliente: 'Indicação de cliente',
+  fachada: 'Viu a fachada',
+  outro: 'Outro',
 }
 
-export function CadastroTab({ patient, onEdit }: Props) {
-  const age = calcAge(patient.birth_date)
+export default function CadastroTab({ patient, onPatientUpdated }: Props) {
+  const photoInputRef = useRef<HTMLInputElement | null>(null)
+  const [cameraOpen, setCameraOpen] = useState(false)
+  const [uploading, setUploading] = useState(false)
 
-  const rows = [
+  if (!patient) {
+    return <p className="text-sm text-[#6B4F42]">Nenhum paciente selecionado.</p>
+  }
+
+  const photoUrl = getPatientPhotoUrl(patient)
+
+  const handlePhotoFile = async (file: File) => {
+    setCameraOpen(false)
+    setUploading(true)
+    try {
+      const fd = new FormData()
+      fd.append('photo', file)
+      const updated = await updatePatient(patient.id, fd)
+      toast({ title: 'Foto atualizada!' })
+      onPatientUpdated?.(updated)
+    } catch {
+      toast({ title: 'Erro ao salvar foto', variant: 'destructive' })
+    } finally {
+      setUploading(false)
+    }
+  }
+
+  const handleRemovePhoto = async () => {
+    setUploading(true)
+    try {
+      const fd = new FormData()
+      fd.append('photo', '')
+      const updated = await updatePatient(patient.id, fd)
+      toast({ title: 'Foto removida!' })
+      onPatientUpdated?.(updated)
+    } catch {
+      toast({ title: 'Erro ao remover foto', variant: 'destructive' })
+    } finally {
+      setUploading(false)
+    }
+  }
+
+  const rows: { label: string; value?: string | null }[] = [
+    { label: 'Nome completo', value: patient.name },
+    { label: 'Como gosta de ser chamado', value: patient.preferred_name },
     {
-      icon: Phone,
-      label: 'Telefone',
-      value: patient.phone || 'Não informado',
+      label: 'Data de nascimento',
+      value: patient.birth_date ? patient.birth_date.slice(0, 10) : null,
     },
-    { icon: Mail, label: 'E-mail', value: patient.email || 'Não informado' },
     {
-      icon: CreditCard,
-      label: 'CPF',
-      value: patient.cpf || 'Não informado',
+      label: 'Sexo',
+      value: patient.gender ? GENDER_LABELS[patient.gender] || patient.gender : null,
     },
+    { label: 'CPF', value: patient.cpf },
+    { label: 'Identidade (RG)', value: patient.identity_rg },
     {
-      icon: Cake,
-      label: 'Nascimento',
-      value: formatBirthDate(patient.birth_date) || 'Não informada',
-      extra: age !== null ? `${age} anos` : undefined,
+      label: 'Parentesco com outro cliente',
+      value: patient.referred_by_name || (patient.kinship ? patient.kinship : null),
     },
+    { label: 'Telefone', value: patient.phone },
+    { label: 'E-mail', value: patient.email },
+    { label: 'Endereço', value: patient.address },
     {
-      icon: MapPin,
-      label: 'Endereço',
-      value: patient.address || 'Não informado',
-    },
-    {
-      icon: StickyNote,
-      label: 'Observações',
-      value: patient.medical_notes?.replace(/<[^>]+>/g, '') || 'Nenhuma observação registrada.',
-      full: true,
+      label: 'Como nos conheceu',
+      value: patient.referral_source
+        ? REFERRAL_LABELS[patient.referral_source] || patient.referral_source
+        : null,
     },
   ]
 
   return (
-    <Card className="card-warm">
-      <CardHeader className="border-b border-[#EDE3D8] pb-3 flex flex-row items-center justify-between">
-        <CardTitle className="font-serif-title text-base text-[#2D1B14]">
-          Dados Cadastrais
-        </CardTitle>
-        <Button size="sm" variant="outline" className="text-xs text-[#C66B4D]" onClick={onEdit}>
-          <Pencil className="w-3.5 h-3.5 mr-1" /> Editar Cadastro
-        </Button>
-      </CardHeader>
-      <CardContent className="pt-4">
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-          {rows.map((r) => (
-            <div
-              key={r.label}
-              className={`flex items-start gap-3 bg-[#FAF6F0] p-3 rounded-xl border border-[#EDE3D8] ${
-                r.full ? 'sm:col-span-2' : ''
-              }`}
+    <div className="space-y-6">
+      <div className="flex items-start gap-5 p-4 rounded-2xl border border-[#EDE3D8] bg-[#FAF6F0]">
+        {photoUrl ? (
+          <img
+            src={photoUrl}
+            alt={`Foto de ${patient.name}`}
+            className="w-24 h-24 rounded-full object-cover border-2 border-[#D4AF37] shrink-0"
+          />
+        ) : (
+          <div className="w-24 h-24 rounded-full bg-white border-2 border-dashed border-[#C66B4D]/40 flex items-center justify-center shrink-0">
+            <Camera className="w-9 h-9 text-[#C66B4D]/40" />
+          </div>
+        )}
+        <div className="flex-1 min-w-0">
+          <h3 className="font-serif-title text-lg font-bold text-[#2D1B14] leading-tight">
+            {patient.name}
+          </h3>
+          {patient.preferred_name && (
+            <p className="text-xs text-[#6B4F42]">
+              Prefere ser chamado(a) de: {patient.preferred_name}
+            </p>
+          )}
+          <div className="flex flex-wrap items-center gap-2 mt-2">
+            <Button
+              size="sm"
+              variant="outline"
+              className="text-[11px] text-[#C66B4D] border-[#C66B4D]/40"
+              disabled={uploading}
+              onClick={() => setCameraOpen(true)}
             >
-              <r.icon className="w-4 h-4 text-[#C66B4D] mt-0.5 shrink-0" />
-              <div className="min-w-0">
-                <p className="text-[10px] font-bold uppercase tracking-wide text-[#6B4F42]">
-                  {r.label}
-                </p>
-                <p className="text-sm text-[#2D1B14] break-words">
-                  {r.value}
-                  {r.extra && (
-                    <Badge className="ml-2 bg-[#D4AF37]/20 text-[#8B6914] border-0 text-[10px]">
-                      {r.extra}
-                    </Badge>
-                  )}
-                </p>
-              </div>
-            </div>
-          ))}
+              <Camera className="w-3.5 h-3.5 mr-1" /> Capturar via Webcam
+            </Button>
+            <Button
+              size="sm"
+              variant="outline"
+              className="text-[11px] text-[#C66B4D] border-[#C66B4D]/40"
+              disabled={uploading}
+              onClick={() => photoInputRef.current?.click()}
+            >
+              <Upload className="w-3.5 h-3.5 mr-1" /> Enviar Foto
+            </Button>
+            {photoUrl && (
+              <Button
+                size="sm"
+                variant="outline"
+                className="text-[11px] text-red-600 border-red-200"
+                disabled={uploading}
+                onClick={handleRemovePhoto}
+              >
+                {uploading ? (
+                  <X className="w-3.5 h-3.5 mr-1" />
+                ) : (
+                  <Trash2 className="w-3.5 h-3.5 mr-1" />
+                )}
+                Remover Foto
+              </Button>
+            )}
+          </div>
         </div>
-      </CardContent>
-    </Card>
+      </div>
+
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+        {rows.map((r) => (
+          <div key={r.label} className="p-3 rounded-xl border border-[#EDE3D8] bg-white">
+            <p className="text-[10px] font-semibold uppercase tracking-wide text-[#6B4F42]">
+              {r.label}
+            </p>
+            <p className="text-sm text-[#2D1B14] mt-0.5 break-words">{r.value || '—'}</p>
+          </div>
+        ))}
+      </div>
+
+      {patient.medical_notes && (
+        <div className="p-4 rounded-2xl border border-[#EDE3D8] bg-white">
+          <p className="text-[10px] font-semibold uppercase tracking-wide text-[#6B4F42]">
+            Observações
+          </p>
+          <p className="text-sm text-[#2D1B14] mt-1 whitespace-pre-wrap">
+            {patient.medical_notes.replace(/<[^>]+>/g, '')}
+          </p>
+        </div>
+      )}
+
+      <CameraCapture open={cameraOpen} onOpenChange={setCameraOpen} onCapture={handlePhotoFile} />
+
+      <input
+        ref={photoInputRef}
+        type="file"
+        accept="image/*"
+        className="hidden"
+        onChange={(e) => {
+          if (e.target.files && e.target.files[0]) handlePhotoFile(e.target.files[0])
+          e.target.value = ''
+        }}
+      />
+    </div>
   )
 }
