@@ -18,7 +18,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select'
-import { Trash2, Plus } from 'lucide-react'
+import { Trash2, Plus, Lock } from 'lucide-react'
 import { ProcedureRecord } from '@/services/procedures'
 import { formatCurrency } from '@/lib/price-calculation'
 import { procedureTablePrice, treatmentFromProcedure } from '@/lib/planning'
@@ -31,6 +31,7 @@ import { TreatmentItem } from '@/components/planning/TreatmentList'
  * fileira superior com coroas para baixo, fileira inferior com coroas para
  * cima. Dente clicável, múltiplos tratamentos por dente, preço da tabela
  * pré-preenchido e editável, dente colorido conforme os tratamentos.
+ * Quando `locked` (plano aprovado), o odontograma fica somente leitura.
  */
 
 const PERMANENT_UPPER_RIGHT = [18, 17, 16, 15, 14, 13, 12, 11]
@@ -95,12 +96,14 @@ function ToothSvg({
   number,
   color,
   isUpper,
-  onClick,
+  locked = false,
+  onToothClick,
 }: {
   number: number
   color: string
   isUpper: boolean
-  onClick: () => void
+  locked?: boolean
+  onToothClick: (n: number) => void
 }) {
   return (
     <svg
@@ -109,8 +112,8 @@ function ToothSvg({
       viewBox={`0 0 ${TOOTH_WIDTH} ${TOOTH_HEIGHT}`}
       role="img"
       aria-label={`Dente ${number}`}
-      className="cursor-pointer transition-transform hover:scale-110"
-      onClick={onClick}
+      className={locked ? '' : 'cursor-pointer transition-transform hover:scale-110'}
+      onClick={locked ? undefined : () => onToothClick(number)}
     >
       <title>{`Dente ${number}`}</title>
       <g transform={isUpper ? undefined : 'rotate(180 15 22)'}>
@@ -145,107 +148,69 @@ function ArchRow({
   deciduous = false,
   colorFor,
   onToothClick,
+  locked = false,
 }: {
   teeth: number[]
   isUpper: boolean
   deciduous?: boolean
   colorFor: (n: number) => string
   onToothClick: (n: number) => void
+  locked?: boolean
 }) {
   const mid = Math.ceil(teeth.length / 2)
   const scale = deciduous ? 0.82 : 1
+  const renderTooth = (n: number, isUpperRow: boolean, leftSide: boolean) => (
+    <div key={n} className="flex flex-col items-center" style={{ width: TOOTH_WIDTH * scale }}>
+      {isUpperRow ? (
+        <>
+          <div style={{ transform: `scale(${scale})`, transformOrigin: 'top center' }}>
+            <ToothSvg
+              number={n}
+              color={colorFor(n)}
+              isUpper={true}
+              locked={locked}
+              onToothClick={onToothClick}
+            />
+          </div>
+          <span
+            className="text-[#6B4F42] font-semibold mt-0.5"
+            style={{ fontSize: deciduous ? 8 : 9 }}
+          >
+            {n}
+          </span>
+        </>
+      ) : (
+        <>
+          <span
+            className="text-[#6B4F42] font-semibold mb-0.5"
+            style={{ fontSize: deciduous ? 8 : 9 }}
+          >
+            {n}
+          </span>
+          <div style={{ transform: `scale(${scale})`, transformOrigin: 'bottom center' }}>
+            <ToothSvg
+              number={n}
+              color={colorFor(n)}
+              isUpper={false}
+              locked={locked}
+              onToothClick={onToothClick}
+            />
+          </div>
+        </>
+      )}
+      {/* `leftSide` mantém a ordem visual original (direita primeiro) */}
+      {leftSide ? null : null}
+    </div>
+  )
+
   return (
     <div className="flex justify-center items-center w-full">
       <div className="flex items-center" style={{ gap: `${TOOTH_GAP}px` }}>
-        {teeth.slice(0, mid).map((n) => (
-          <div
-            key={n}
-            className="flex flex-col items-center"
-            style={{ width: TOOTH_WIDTH * scale }}
-          >
-            {isUpper ? (
-              <>
-                <div style={{ transform: `scale(${scale})`, transformOrigin: 'top center' }}>
-                  <ToothSvg
-                    number={n}
-                    color={colorFor(n)}
-                    isUpper={true}
-                    onClick={() => onToothClick(n)}
-                  />
-                </div>
-                <span
-                  className="text-[#6B4F42] font-semibold mt-0.5"
-                  style={{ fontSize: deciduous ? 8 : 9 }}
-                >
-                  {n}
-                </span>
-              </>
-            ) : (
-              <>
-                <span
-                  className="text-[#6B4F42] font-semibold mb-0.5"
-                  style={{ fontSize: deciduous ? 8 : 9 }}
-                >
-                  {n}
-                </span>
-                <div style={{ transform: `scale(${scale})`, transformOrigin: 'bottom center' }}>
-                  <ToothSvg
-                    number={n}
-                    color={colorFor(n)}
-                    isUpper={false}
-                    onClick={() => onToothClick(n)}
-                  />
-                </div>
-              </>
-            )}
-          </div>
-        ))}
+        {teeth.slice(0, mid).map((n) => renderTooth(n, isUpper, true))}
       </div>
       <div className="w-px h-10 bg-[#EDE3D8] mx-1 shrink-0" />
       <div className="flex items-center" style={{ gap: `${TOOTH_GAP}px` }}>
-        {teeth.slice(mid).map((n) => (
-          <div
-            key={n}
-            className="flex flex-col items-center"
-            style={{ width: TOOTH_WIDTH * scale }}
-          >
-            {isUpper ? (
-              <>
-                <div style={{ transform: `scale(${scale})`, transformOrigin: 'top center' }}>
-                  <ToothSvg
-                    number={n}
-                    color={colorFor(n)}
-                    isUpper={true}
-                    onClick={() => onToothClick(n)}
-                  />
-                </div>
-                <span
-                  className="text-[#6B4F42] font-semibold mt-0.5"
-                  style={{ fontSize: deciduous ? 8 : 9 }}
-                >
-                  {n}
-                </span>
-              </>
-            ) : (
-              <>
-                <span
-                  className="text-[#6B4F42] font-semibold mb-0.5"
-                  style={{ fontSize: deciduous ? 8 : 9 }}
-                >
-                  {n}
-                </span>
-                <div style={{ transform: `scale(${scale})`, transformOrigin: 'bottom center' }}>
-                  <ToothSvg
-                    number={n}
-                    color={colorFor(n)}
-                    isUpper={false}
-                    onClick={() => onToothClick(n)}
-                  />
-                </div>
-              </>
-            )}
-          </div>
-        ))}
+        {teeth.slice(mid).map((n) => renderTooth(n, isUpper, false))}
       </div>
     </div>
   )
@@ -255,9 +220,11 @@ interface Props {
   procedures: ProcedureRecord[]
   items: TreatmentItem[]
   onChange: (items: TreatmentItem[]) => void
+  /** Quando o planejamento está aprovado, o odontograma fica somente leitura. */
+  locked?: boolean
 }
 
-export function OdontogramNew({ procedures, items, onChange }: Props) {
+export function OdontogramNew({ procedures, items, onChange, locked = false }: Props) {
   const [activeTooth, setActiveTooth] = useState<number | null>(null)
   const [newProcedureId, setNewProcedureId] = useState<string>('')
 
@@ -282,6 +249,7 @@ export function OdontogramNew({ procedures, items, onChange }: Props) {
   const activeTotal = activeItems.reduce((s, it) => s + (it.price || 0), 0)
 
   const openTooth = (n: number) => {
+    if (locked) return
     setActiveTooth(n)
     setNewProcedureId(procedures[0]?.id || '')
   }
@@ -314,11 +282,18 @@ export function OdontogramNew({ procedures, items, onChange }: Props) {
   return (
     <Card className="card-warm p-4 space-y-4">
       <div>
-        <CardHeader className="p-0 pb-1">
-          <CardTitle className="font-serif-title text-base font-bold text-[#2D1B14]">
-            Odontograma — Planejamento Odontológico
-          </CardTitle>
-        </CardHeader>
+        <div className="flex items-center justify-between gap-2">
+          <CardHeader className="p-0 pb-1">
+            <CardTitle className="font-serif-title text-base font-bold text-[#2D1B14]">
+              Odontograma — Planejamento Odontológico
+            </CardTitle>
+          </CardHeader>
+          {locked && (
+            <Badge className="bg-[#2E8B57] text-white text-[10px] gap-1">
+              <Lock className="w-3 h-3" /> Aprovado — somente leitura
+            </Badge>
+          )}
+        </div>
         <p className="text-[11px] text-[#6B4F42]">
           Clique em um dente para adicionar tratamentos (canal, restauração, pino etc.). O preço vem
           da tabela e é editável; o dente fica colorido conforme os tratamentos marcados.
@@ -333,6 +308,7 @@ export function OdontogramNew({ procedures, items, onChange }: Props) {
           isUpper={true}
           colorFor={colorFor}
           onToothClick={openTooth}
+          locked={locked}
         />
         <div className="border-t border-[#EDE3D8] my-1" />
         <ArchRow
@@ -340,6 +316,7 @@ export function OdontogramNew({ procedures, items, onChange }: Props) {
           isUpper={false}
           colorFor={colorFor}
           onToothClick={openTooth}
+          locked={locked}
         />
       </div>
 
@@ -352,6 +329,7 @@ export function OdontogramNew({ procedures, items, onChange }: Props) {
           deciduous={true}
           colorFor={colorFor}
           onToothClick={openTooth}
+          locked={locked}
         />
         <div className="border-t border-[#EDE3D8] my-1" />
         <ArchRow
@@ -360,6 +338,7 @@ export function OdontogramNew({ procedures, items, onChange }: Props) {
           deciduous={true}
           colorFor={colorFor}
           onToothClick={openTooth}
+          locked={locked}
         />
       </div>
 
@@ -370,16 +349,18 @@ export function OdontogramNew({ procedures, items, onChange }: Props) {
               <Badge className="bg-[#2D1B14] text-white text-[9px] px-1.5">Dente {it.tooth}</Badge>
               <span className="text-[#2D1B14]">{it.procedureName}</span>
               <span className="ml-auto font-bold text-[#2D1B14]">{formatCurrency(it.price)}</span>
-              <Button
-                size="sm"
-                type="button"
-                variant="ghost"
-                className="h-6 w-6 p-0 text-red-500 hover:bg-red-50"
-                onClick={() => removeItem(it.id)}
-                title="Remover"
-              >
-                <Trash2 className="w-3.5 h-3.5" />
-              </Button>
+              {!locked && (
+                <Button
+                  size="sm"
+                  type="button"
+                  variant="ghost"
+                  className="h-6 w-6 p-0 text-red-500 hover:bg-red-50"
+                  onClick={() => removeItem(it.id)}
+                  title="Remover"
+                >
+                  <Trash2 className="w-3.5 h-3.5" />
+                </Button>
+              )}
             </div>
           ))}
           <div className="flex justify-end items-center gap-2 border-t border-[#EDE3D8] pt-2">
@@ -407,7 +388,7 @@ export function OdontogramNew({ procedures, items, onChange }: Props) {
             <div className="flex gap-2 items-end">
               <div className="flex-1 space-y-1">
                 <Label className="text-xs font-semibold">Tratamento da tabela</Label>
-                <Select value={newProcedureId} onValueChange={setNewProcedureId}>
+                <Select value={newProcedureId} disabled={locked} onValueChange={setNewProcedureId}>
                   <SelectTrigger className="w-full bg-white text-xs">
                     <SelectValue placeholder="Selecione" />
                   </SelectTrigger>
@@ -425,7 +406,7 @@ export function OdontogramNew({ procedures, items, onChange }: Props) {
                 size="sm"
                 className="btn-terracotta-gold text-xs"
                 onClick={addTreatment}
-                disabled={procedures.length === 0}
+                disabled={locked || procedures.length === 0}
               >
                 <Plus className="w-4 h-4 mr-1" /> Incluir
               </Button>
@@ -449,19 +430,22 @@ export function OdontogramNew({ procedures, items, onChange }: Props) {
                     min={0}
                     step="0.01"
                     value={it.price}
+                    disabled={locked}
                     onChange={(e) => updatePrice(it.id, Number(e.target.value))}
                     className="w-28 h-8 text-xs"
                   />
-                  <Button
-                    size="sm"
-                    type="button"
-                    variant="ghost"
-                    className="h-7 w-7 p-0 text-red-500 hover:bg-red-50"
-                    onClick={() => removeItem(it.id)}
-                    title="Remover"
-                  >
-                    <Trash2 className="w-3.5 h-3.5" />
-                  </Button>
+                  {!locked && (
+                    <Button
+                      size="sm"
+                      type="button"
+                      variant="ghost"
+                      className="h-7 w-7 p-0 text-red-500 hover:bg-red-50"
+                      onClick={() => removeItem(it.id)}
+                      title="Remover"
+                    >
+                      <Trash2 className="w-3.5 h-3.5" />
+                    </Button>
+                  )}
                 </div>
               ))}
             </div>

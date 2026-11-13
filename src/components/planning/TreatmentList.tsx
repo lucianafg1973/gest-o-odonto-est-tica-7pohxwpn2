@@ -9,7 +9,8 @@ import {
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Card, CardHeader, CardTitle } from '@/components/ui/card'
-import { Trash2, Plus } from 'lucide-react'
+import { Trash2, Plus, Lock } from 'lucide-react'
+import { Badge } from '@/components/ui/badge'
 import { ProcedureRecord } from '@/services/procedures'
 import { formatCurrency } from '@/lib/price-calculation'
 import { procedureTablePrice, treatmentFromProcedure } from '@/lib/planning'
@@ -34,6 +35,8 @@ interface Props {
   /** Rótulo do campo de localização (ex.: "Dente(s)" ou "Região"). */
   locationLabel?: string
   locationPlaceholder?: string
+  /** Quando o planejamento está aprovado, a lista fica somente leitura. */
+  locked?: boolean
 }
 
 export function TreatmentList({
@@ -44,8 +47,10 @@ export function TreatmentList({
   onChange,
   locationLabel = 'Localização',
   locationPlaceholder = 'Ex.: 11, 12 ou região',
+  locked = false,
 }: Props) {
   const addItem = () => {
+    if (locked) return
     const first = procedures[0]
     if (!first) return
     onChange([...items, treatmentFromProcedure(first)])
@@ -65,15 +70,21 @@ export function TreatmentList({
           </CardTitle>
           {description && <p className="text-[11px] text-[#6B4F42] mt-1">{description}</p>}
         </div>
-        <Button
-          size="sm"
-          type="button"
-          className="btn-terracotta-gold text-xs"
-          onClick={addItem}
-          disabled={procedures.length === 0}
-        >
-          <Plus className="w-4 h-4 mr-1" /> Adicionar Tratamento
-        </Button>
+        {locked ? (
+          <Badge className="bg-[#2E8B57] text-white text-[10px] gap-1">
+            <Lock className="w-3 h-3" /> Aprovado — somente leitura
+          </Badge>
+        ) : (
+          <Button
+            size="sm"
+            type="button"
+            className="btn-terracotta-gold text-xs"
+            onClick={addItem}
+            disabled={procedures.length === 0}
+          >
+            <Plus className="w-4 h-4 mr-1" /> Adicionar Tratamento
+          </Button>
+        )}
       </div>
 
       {procedures.length === 0 && (
@@ -99,6 +110,7 @@ export function TreatmentList({
               <Label className="text-[10px] font-semibold">Procedimento</Label>
               <Select
                 value={item.procedureId}
+                disabled={locked}
                 onValueChange={(v) => {
                   const proc = procedures.find((p) => p.id === v)
                   updateItem(item.id, {
@@ -124,6 +136,7 @@ export function TreatmentList({
               <Label className="text-[10px] font-semibold">{locationLabel}</Label>
               <Input
                 value={item.region || item.tooth}
+                disabled={locked}
                 onChange={(e) =>
                   updateItem(item.id, { region: e.target.value, tooth: e.target.value })
                 }
@@ -138,21 +151,24 @@ export function TreatmentList({
                 min={0}
                 step="0.01"
                 value={item.price}
+                disabled={locked}
                 onChange={(e) => updateItem(item.id, { price: Number(e.target.value) })}
                 className="text-xs"
               />
             </div>
             <div className="sm:col-span-1 flex justify-end">
-              <Button
-                size="sm"
-                type="button"
-                variant="outline"
-                className="w-9 px-0 text-red-600 border-red-200 hover:bg-red-50"
-                onClick={() => removeItem(item.id)}
-                title="Remover tratamento"
-              >
-                <Trash2 className="w-3.5 h-3.5" />
-              </Button>
+              {!locked && (
+                <Button
+                  size="sm"
+                  type="button"
+                  variant="outline"
+                  className="w-9 px-0 text-red-600 border-red-200 hover:bg-red-50"
+                  onClick={() => removeItem(item.id)}
+                  title="Remover tratamento"
+                >
+                  <Trash2 className="w-3.5 h-3.5" />
+                </Button>
+              )}
             </div>
           </div>
         ))}

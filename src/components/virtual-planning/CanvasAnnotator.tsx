@@ -6,6 +6,8 @@ interface CanvasAnnotatorProps {
   imageUrl: string
   initialAnnotations?: string
   onSave: (annotationsJson: string) => void
+  /** Quando true (plano aprovado), exibe só a imagem sem ferramentas de edição. */
+  readOnly?: boolean
 }
 
 interface Shape {
@@ -19,7 +21,12 @@ interface Shape {
   text?: string
 }
 
-export function CanvasAnnotator({ imageUrl, initialAnnotations, onSave }: CanvasAnnotatorProps) {
+export function CanvasAnnotator({
+  imageUrl,
+  initialAnnotations,
+  onSave,
+  readOnly = false,
+}: CanvasAnnotatorProps) {
   const canvasRef = useRef<HTMLCanvasElement | null>(null)
   /** Imagem já carregada, para redesenhar sem recarregar a cada traço. */
   const imgRef = useRef<HTMLImageElement | null>(null)
@@ -154,6 +161,7 @@ export function CanvasAnnotator({ imageUrl, initialAnnotations, onSave }: Canvas
   }
 
   const handleMouseDown = (e: React.MouseEvent<HTMLCanvasElement>) => {
+    if (readOnly) return
     const { x, y } = pointerToCanvas(e)
 
     if (tool === 'text') {
@@ -211,6 +219,19 @@ export function CanvasAnnotator({ imageUrl, initialAnnotations, onSave }: Canvas
 
   const handleSaveClick = () => {
     onSave(JSON.stringify(shapesRef.current))
+  }
+
+  if (readOnly) {
+    return (
+      <div className="flex flex-col gap-2">
+        <div className="relative border border-[#EDE3D8] rounded-xl overflow-hidden bg-black/5 flex justify-center">
+          <canvas ref={canvasRef} className="max-w-full h-auto" />
+        </div>
+        <p className="text-[10px] text-center text-[#6B4F42]">
+          Planejamento aprovado — anotações somente leitura.
+        </p>
+      </div>
+    )
   }
 
   return (
@@ -302,7 +323,10 @@ export function CanvasAnnotator({ imageUrl, initialAnnotations, onSave }: Canvas
           onMouseDown={handleMouseDown}
           onMouseMove={handleMouseMove}
           onMouseUp={handleMouseUp}
-          className="cursor-crosshair max-w-full h-auto"
+          onPointerDown={handleMouseDown}
+          onPointerMove={handleMouseMove}
+          onPointerUp={handleMouseUp}
+          className={readOnly ? 'max-w-full h-auto' : 'cursor-crosshair max-w-full h-auto'}
         />
       </div>
     </div>

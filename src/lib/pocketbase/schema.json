@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2026-11-13T04:39:10.964Z",
+  "generatedAt": "2026-11-13T05:01:40.261Z",
   "collections": [
     {
       "name": "users",
@@ -590,9 +590,31 @@
           "type": "json",
           "required": false,
           "system": false
+        },
+        {
+          "name": "approval_status",
+          "type": "select",
+          "required": false,
+          "system": false,
+          "selectValues": ["rascunho", "aprovado"]
+        },
+        {
+          "name": "approved_at",
+          "type": "date",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "plan_date",
+          "type": "date",
+          "required": false,
+          "system": false
         }
       ],
-      "indexes": ["CREATE INDEX `idx_vplans_patient_kind` ON `virtual_plans` (patient)"]
+      "indexes": [
+        "CREATE INDEX `idx_vplans_patient_kind` ON `virtual_plans` (patient)",
+        "CREATE INDEX `idx_vplans_patient_date` ON `virtual_plans` (patient, plan_date)"
+      ]
     },
     {
       "name": "documents",
