@@ -31,11 +31,11 @@ import {
 
 const navItems = [
   { label: 'Dashboard', path: '/', icon: LayoutDashboard },
+  { label: 'Pacientes', path: '/pacientes', icon: Users, highlight: true },
+  { label: 'Agenda', path: '/agenda', icon: Calendar },
   { label: 'Leads', path: '/leads', icon: UserPlus },
   { label: 'Conversas', path: '/conversas', icon: MessageCircle },
-  { label: 'Agenda', path: '/agenda', icon: Calendar },
   { label: 'Vendas', path: '/vendas', icon: TrendingUp },
-  { label: 'Pacientes', path: '/pacientes', icon: Users },
   { label: 'Equipe', path: '/equipe', icon: UserCog },
   { label: 'Metas', path: '/metas', icon: Target },
   { label: 'Indicadores', path: '/indicadores', icon: BarChart3 },
@@ -92,6 +92,7 @@ export function Layout() {
               location.pathname === item.path ||
               (item.path !== '/' && location.pathname.startsWith(item.path))
             const Icon = item.icon
+            const highlight = 'highlight' in item && item.highlight
             return (
               <Link
                 key={item.path}
@@ -100,11 +101,16 @@ export function Layout() {
                 className={`flex items-center gap-3 px-3.5 py-2.5 rounded-xl text-sm font-medium transition-all relative ${
                   isActive
                     ? 'bg-[#C66B4D]/20 text-[#D4AF37] font-semibold'
-                    : 'text-[#EDE3D8]/80 hover:bg-white/5 hover:text-white'
+                    : highlight
+                      ? 'bg-white/10 text-[#EDE3D8] font-semibold hover:bg-white/15 hover:text-white ring-1 ring-[#D4AF37]/40'
+                      : 'text-[#EDE3D8]/80 hover:bg-white/5 hover:text-white'
                 }`}
               >
                 {isActive && (
                   <div className="absolute left-0 top-2 bottom-2 w-1.5 bg-[#D4AF37] rounded-r-full" />
+                )}
+                {!isActive && highlight && (
+                  <div className="absolute right-2 top-1/2 -translate-y-1/2 w-1.5 h-1.5 rounded-full bg-[#D4AF37]" />
                 )}
                 <Icon className={`w-4 h-4 ${isActive ? 'text-[#D4AF37]' : 'text-[#EDE3D8]/70'}`} />
                 <span>{item.label}</span>

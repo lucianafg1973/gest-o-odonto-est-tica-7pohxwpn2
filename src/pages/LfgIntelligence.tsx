@@ -1,6 +1,14 @@
 import { useState } from 'react'
 import { getLfgIntelligence } from '@/services/ai'
-import { Brain, Sparkles, AlertTriangle, TrendingUp, Lightbulb, RefreshCw } from 'lucide-react'
+import {
+  Brain,
+  Sparkles,
+  AlertTriangle,
+  TrendingUp,
+  TrendingDown,
+  Lightbulb,
+  RefreshCw,
+} from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { toast } from '@/hooks/use-toast'

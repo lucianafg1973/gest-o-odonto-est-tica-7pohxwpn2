@@ -7,7 +7,18 @@ import { getAppointments, AppointmentRecord } from '@/services/appointments'
 import { getLeads, LeadRecord } from '@/services/leads'
 import { getGoals, GoalRecord } from '@/services/goals'
 import { getLfgIntelligence } from '@/services/ai'
-import { DollarSign, TrendingUp, Target, Brain, Sparkles, ChevronRight } from 'lucide-react'
+import { PatientFormDialog } from '@/components/patients/PatientFormDialog'
+import {
+  DollarSign,
+  TrendingUp,
+  Target,
+  Brain,
+  Sparkles,
+  ChevronRight,
+  UserPlus,
+  Calendar,
+  Users,
+} from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { ChartContainer, ChartConfig } from '@/components/ui/chart'
@@ -23,6 +34,7 @@ export default function Index() {
   const [goals, setGoals] = useState<GoalRecord[]>([])
   const [aiReport, setAiReport] = useState<string | null>(null)
   const [reportLoading, setReportLoading] = useState(false)
+  const [newPatientOpen, setNewPatientOpen] = useState(false)
 
   const loadData = async () => {
     try {
@@ -134,6 +146,31 @@ export default function Index() {
         <p className="text-xs text-[#6B4F42] mt-1">
           Metodologia LFG: Lucratividade + Foco + Gestão em um único painel.
         </p>
+        <div className="flex flex-wrap gap-2 mt-4">
+          <Button
+            size="sm"
+            className="btn-terracotta-gold text-xs font-semibold"
+            onClick={() => setNewPatientOpen(true)}
+          >
+            <UserPlus className="w-4 h-4 mr-1" /> Novo Paciente
+          </Button>
+          <Button
+            size="sm"
+            variant="outline"
+            className="text-xs text-[#C66B4D] border-[#EDE3D8]"
+            onClick={() => navigate('/pacientes')}
+          >
+            <Users className="w-4 h-4 mr-1" /> Pacientes
+          </Button>
+          <Button
+            size="sm"
+            variant="outline"
+            className="text-xs text-[#C66B4D] border-[#EDE3D8]"
+            onClick={() => navigate('/agenda')}
+          >
+            <Calendar className="w-4 h-4 mr-1" /> Agenda
+          </Button>
+        </div>
       </div>
 
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
@@ -263,6 +300,12 @@ export default function Index() {
           )}
         </CardContent>
       </Card>
+
+      <PatientFormDialog
+        open={newPatientOpen}
+        onOpenChange={setNewPatientOpen}
+        onSaved={() => navigate('/pacientes')}
+      />
     </div>
   )
 }
