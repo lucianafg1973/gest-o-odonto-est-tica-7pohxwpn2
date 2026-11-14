@@ -74,7 +74,9 @@ export function AddProcedureFlow({
 }: Props) {
   const [denticao, setDenticao] = useState<'permanente' | 'decidua'>('permanente')
   const [dente, setDente] = useState<number | null>(null)
+  /** Busca ao digitar a primeira letra — insensível a maiúsculas e acentos. */
   const [busca, setBusca] = useState('')
+  const [buscaSemAcento, setBuscaSemAcento] = useState('')
   const [especialidade, setEspecialidade] = useState<string>('todas')
   /** Valor editável por linha (procId → string do input). */
   const [precos, setPrecos] = useState<Record<string, string>>({})
@@ -90,6 +92,7 @@ export function AddProcedureFlow({
     setDente(denteInicial ? Number(denteInicial) : null)
     setPendentes([])
     setBusca('')
+    setBuscaSemAcento('')
     setEspecialidade('todas')
     setPrecos({})
     setFacesPorLinha({})
@@ -112,17 +115,22 @@ export function AddProcedureFlow({
   const lista = useMemo(() => {
     let l = ativos
     if (especialidade !== 'todas') l = l.filter((p) => p.specialty === especialidade)
-    const q = busca.trim().toLowerCase()
-    if (q) {
-      l = l.filter(
-        (p) =>
-          p.name?.toLowerCase().includes(q) ||
-          p.external_code?.toLowerCase().includes(q) ||
-          p.family?.toLowerCase().includes(q),
+    // Filtro insensível a maiúsculas e acentos (busca direta e sem acento) —
+    // lista dinâmica: ao digitar a 1ª letra já mostra tudo que começa com ela.
+    const qn = buscaSemAcento.trim().toLowerCase()
+    if (qn) {
+      l = l.filter((p) =>
+        [p.name, p.external_code, p.family].some((v) =>
+          (v || '')
+            .normalize('NFD')
+            .replace(/[\u0300-\u036f]/g, '')
+            .toLowerCase()
+            .includes(qn),
+        ),
       )
     }
     return l
-  }, [ativos, especialidade, busca])
+  }, [ativos, especialidade, buscaSemAcento])
 
   const precoStrDe = (p: ProcedureRecord) => precos[p.id] ?? String(precoEfetivo(p) || 0)
 
@@ -273,7 +281,11 @@ export function AddProcedureFlow({
                 <Search className="w-3.5 h-3.5 absolute left-2.5 top-1/2 -translate-y-1/2 text-[#6B4F42]" />
                 <Input
                   value={busca}
-                  onChange={(e) => setBusca(e.target.value)}
+                  onChange={(e) => {
+                    const v = e.target.value
+                    setBusca(v)
+                    setBuscaSemAcento(v.normalize('NFD').replace(/[\u0300-\u036f]/g, ''))
+                  }}
                   placeholder="Pesquisar por nome, código ou família…"
                   className="pl-8 bg-white border-[#EDE3D8] text-xs h-8"
                 />
@@ -366,7 +378,11 @@ export function AddProcedureFlow({
                             type="button"
                             size="sm"
                             className="btn-terracotta-gold text-[10px] h-7 px-2"
-                            onClick={() => adicionar(p)}
+                            onClick={() => {
+                              adicionar(p)
+                              setBusca('')
+                              setBuscaSemAcento('')
+                            }}
                           >
                             <Plus className="w-3 h-3 mr-0.5" /> Adicionar
                           </Button>

@@ -345,11 +345,13 @@ export function OdontogramaClinico({
   const perm = denticao === 'permanente'
   const scale = perm ? 1 : 0.9
 
+  // Ordem FDI vista pelo profissional (paciente em frente):
+  // superior: 18→11 | 21→28 · inferior: 48→41 | 31→38.
   const linhas = useMemo(() => {
     if (perm) {
       return {
         sup: [PERMANENT_UPPER_RIGHT, PERMANENT_UPPER_LEFT],
-        inf: [PERMANENT_LOWER_LEFT, PERMANENT_LOWER_RIGHT],
+        inf: [PERMANENT_LOWER_RIGHT, PERMANENT_LOWER_LEFT],
       }
     }
     return {

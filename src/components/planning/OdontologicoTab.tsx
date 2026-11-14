@@ -19,7 +19,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select'
-import { Plus, Pencil, CheckCircle2, Ban, RotateCcw, Trash2, Bone, Lock } from 'lucide-react'
+import { Plus, Pencil, CheckCircle2, Ban, RotateCcw, Trash2, Lock } from 'lucide-react'
 import { ProcedureRecord } from '@/services/procedures'
 import { formatCurrency } from '@/lib/price-calculation'
 import type { Tratamento, CondicaoClinica } from '@/lib/plan-types'
@@ -42,7 +42,6 @@ import {
   ModoSelecao,
 } from '@/components/planning/OdontogramaClinico'
 import { TratamentoDialog } from '@/components/planning/TratamentoDialog'
-import { ImplantPanel } from '@/components/planning/ImplantPanel'
 import { AddProcedureFlow, abrevFaces } from '@/components/planning/AddProcedureFlow'
 import { createMedicalRecord } from '@/services/medical_records'
 
@@ -50,7 +49,7 @@ import { createMedicalRecord } from '@/services/medical_records'
  * Aba "Planejamento Odontológico" — conecta o odontograma anatômico
  * (OdontogramaClinico) ao diálogo de tratamento (TratamentoDialog), à lista/
  * orçamento em centavos (lib/orcamento) e ao painel de implantes/protocolos
- * (ImplantPanel). Vários tratamentos por dente coexistem; o total alimenta
+ * (ImplantPanel — renderizado em outro módulo). Vários tratamentos por dente coexistem; o total alimenta
  * as condições de pagamento (PaymentInfo) no componente pai.
  *
  * Contador de lesões: cada tratamento ativo (não cancelado) do dente conta
@@ -100,7 +99,6 @@ export function OdontologicoTab({
   const setMarcas = onMarcasChange
   const [selecionados, setSelecionados] = useState<number[]>([])
   const [facesSelecionadas, setFacesSelecionadas] = useState<string[]>([])
-  const [modoFaces, setModoFaces] = useState(false)
   const [denteAberto, setDenteAberto] = useState<number | null>(null)
   const [novoProcId, setNovoProcId] = useState('')
   const [editando, setEditando] = useState<{ t: Tratamento; modo: 'editar' | 'concluir' } | null>(
@@ -109,34 +107,7 @@ export function OdontologicoTab({
   /** Novo fluxo "Adicionar procedimento": odontograma + tabela completa. */
   const [flowOpen, setFlowOpen] = useState(false)
   const [flowDenteInicial, setFlowDenteInicial] = useState<string | null>(null)
-  const [painelImplantes, setPainelImplantes] = useState(false)
-  /**
-   * Procedimento complementar coberto pelo preço global de um protocolo:
-   * implantes e itens cujo nome indica exodontia, enxerto, componente ou
-   * prótese (Teste 3 — sem cobrança repetida no orçamento).
-   */
-  const ehComplementarGlobal = (t: Tratamento) =>
-    t.categoria === 'implante' ||
-    /exodontia|extra[çc][ãa]o|enxerto|componente|provis[óo]ria|pro[óo]tese/i.test(
-      t.procedureName || '',
-    )
-
-  /**
-   * Aplica a marca "incluído no global" aos complementares da lista — usada
-   * quando um protocolo com preço global é registrado: o valor global já os
-   * cobre, então não entram na soma do orçamento.
-   */
-  const marcarComplementares = (lista: Tratamento[], protocoloId: string) =>
-    lista.map((t) =>
-      t.id !== protocoloId &&
-      t.status !== 'cancelado' &&
-      t.incluidoNoGlobal !== true &&
-      ehComplementarGlobal(t)
-        ? { ...t, incluidoNoGlobal: true }
-        : t,
-    )
-
-  const modo: ModoSelecao = condicaoAtiva ? 'condicao' : modoFaces ? 'face' : 'dente'
+  const modo: ModoSelecao = condicaoAtiva ? 'condicao' : 'dente'
 
   /** Estado visual de cada dente a partir dos tratamentos + marcações. */
   const visual = useMemo(() => {
@@ -189,16 +160,6 @@ export function OdontologicoTab({
   const onFaceClick = (dente: number, face: string) => {
     if (locked) return
     const key = `${dente}:${face}`
-    if (condicaoAtiva) {
-      setMarcas((prev) => {
-        const cur = prev[String(dente)] || { condicoes: [], faces: {} }
-        const faces = { ...cur.faces }
-        if (faces[face] === condicaoAtiva) delete faces[face]
-        else faces[face] = condicaoAtiva
-        return { ...prev, [String(dente)]: { ...cur, faces } }
-      })
-      return
-    }
     setFacesSelecionadas((prev) =>
       prev.includes(key) ? prev.filter((x) => x !== key) : [...prev, key],
     )
@@ -280,8 +241,7 @@ export function OdontologicoTab({
         </div>
         <p className="text-[11px] text-[#6B4F42]">
           Clique em um dente para gerenciar seus tratamentos (canal, pino, restauração… — vários por
-          dente). Escolha uma condição na legenda para marcar o exame clínico; com &quot;Faces&quot;
-          ativo, clique nas faces da coroa.
+          dente). Escolha uma condição na legenda para marcar o exame clínico.
         </p>
 
         {/* Dentição + modo */}
@@ -301,19 +261,6 @@ export function OdontologicoTab({
               </button>
             ))}
           </div>
-          <Button
-            type="button"
-            size="sm"
-            variant={modoFaces ? 'default' : 'outline'}
-            disabled={locked}
-            className={`text-[11px] h-8 ${modoFaces ? 'btn-terracotta-gold' : 'text-[#C66B4D] border-[#C66B4D]/40'}`}
-            onClick={() => {
-              setModoFaces((v) => !v)
-              setCondicaoAtiva(null)
-            }}
-          >
-            Selecionar faces
-          </Button>
           {(selecionados.length > 0 || facesSelecionadas.length > 0) && !locked && (
             <Button
               type="button"
@@ -351,7 +298,6 @@ export function OdontologicoTab({
               }
               onClick={() => {
                 setCondicaoAtiva((cur) => (cur === c.key ? null : c.key))
-                setModoFaces(false)
               }}
             >
               {c.label}
@@ -391,6 +337,7 @@ export function OdontologicoTab({
             type="button"
             size="sm"
             className="btn-terracotta-gold text-xs w-fit"
+            data-testid="btn-adicionar-procedimento"
             onClick={() => abrirFlow(null)}
           >
             <Plus className="w-3.5 h-3.5 mr-1" /> Adicionar procedimento
@@ -591,44 +538,6 @@ export function OdontologicoTab({
                 {formatCurrency(totalC / 100)}
               </span>
             </div>
-          </div>
-        )}
-
-        {/* Painel de implantes/protocolos */}
-        {!locked && (
-          <div className="border-t border-[#EDE3D8] pt-2">
-            <Button
-              type="button"
-              size="sm"
-              variant={painelImplantes ? 'default' : 'outline'}
-              className={`text-xs font-semibold ${painelImplantes ? 'btn-terracotta-gold' : 'text-[#C66B4D] border-[#C66B4D]/40'}`}
-              onClick={() => setPainelImplantes((v) => !v)}
-            >
-              <Bone className="w-3.5 h-3.5 mr-1" />
-              {painelImplantes ? 'Ocultar implantes e protocolos' : 'Implantes e protocolos'}
-            </Button>
-            {painelImplantes && (
-              <div className="mt-3">
-                <ImplantPanel
-                  procedures={procedures}
-                  tratamentos={tratamentos}
-                  onChange={(ts) => {
-                    // Preço global recém-registrado: marca os complementares
-                    // (exodontias, enxertos, componentes, próteses) já
-                    // planejados como incluídos — sem cobrança repetida (T3).
-                    const novoGlobal = ts.find(
-                      (t) =>
-                        t.categoria === 'protocolo' &&
-                        t.modalidadePreco === 'global' &&
-                        !tratamentos.some((a) => a.id === t.id),
-                    )
-                    onChange(novoGlobal ? marcarComplementares(ts, novoGlobal.id) : ts)
-                  }}
-                  professionals={professionals}
-                  locked={locked}
-                />
-              </div>
-            )}
           </div>
         )}
       </Card>
