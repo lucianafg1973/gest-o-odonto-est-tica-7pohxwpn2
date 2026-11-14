@@ -24,7 +24,13 @@ import {
   TreatmentItemRecord,
   PaymentInstallmentRecord,
 } from '@/services/virtual_plans'
-import { getDocuments, DocumentRecord } from '@/services/documents'
+import {
+  getDocuments,
+  createDocument,
+  attachSignedPdf,
+  updateDocument,
+  DocumentRecord,
+} from '@/services/documents'
 import {
   getFinancialTransactions,
   createTransaction,
@@ -34,7 +40,7 @@ import { getMessagesByPatient, MessageRecord } from '@/services/messages'
 import { getProcedures } from '@/services/procedures'
 import { ProcedureRecord } from '@/services/procedures'
 import { formatCurrency } from '@/lib/price-calculation'
-import { printPlan } from '@/lib/planPrint'
+
 import { OdontologicoTab, type Marcas } from '@/components/planning/OdontologicoTab'
 import type { Tratamento } from '@/lib/plan-types'
 import { orcamentoCents } from '@/lib/orcamento'
@@ -47,6 +53,13 @@ import { PatientFormDialog } from '@/components/patients/PatientFormDialog'
 import CadastroTab from '@/components/patients/CadastroTab'
 import { FinanceiroTab } from '@/components/patients/FinanceiroTab'
 import { DocumentTemplates } from '@/components/documents/DocumentTemplates'
+import { PlanPrintModal } from '@/components/documents/PlanPrintModal'
+import { ApprovePlanDialog } from '@/components/documents/ApprovePlanDialog'
+import { AttachSignedDialog } from '@/components/documents/AttachSignedDialog'
+import { PlanDocsSection } from '@/components/documents/PlanDocsSection'
+import { PlanDocSnapshot, DocOptions } from '@/lib/plan-doc'
+import { buildArchiveDocument, parseArchiveMeta, contentComAssinatura } from '@/lib/plan-archive'
+import { useAuth } from '@/hooks/use-auth'
 import {
   FileText,
   Image as ImageIcon,
@@ -61,6 +74,12 @@ import {
   CheckCircle2,
   Printer,
   Lock,
+  Eye,
+  Save,
+  FileDown,
+  MessageCircle,
+  FileSignature,
+  Paperclip,
 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
@@ -163,6 +182,12 @@ export default function PacienteDetail() {
   const [activeDentalPlan, setActiveDentalPlan] = useState<VirtualPlanRecord | null>(null)
   const [creatingPlan, setCreatingPlan] = useState<PlanKind | null>(null)
   const [approvingPlan, setApprovingPlan] = useState(false)
+  const { user } = useAuth()
+  const [printModalOpen, setPrintModalOpen] = useState(false)
+  const [printKind, setPrintKind] = useState<PlanKind>('odontologico')
+  const [printSignature, setPrintSignature] = useState(false)
+  const [approveKind, setApproveKind] = useState<PlanKind | null>(null)
+  const [attachKind, setAttachKind] = useState<PlanKind | null>(null)
 
   const [anamnesis, setAnamnesis] = useState('')
   const [diagnosis, setDiagnosis] = useState('')
@@ -203,6 +228,35 @@ export default function PacienteDetail() {
     due_date: r.due_date || '',
     installments_count: r.installments_count ?? 1,
   })
+
+  /**
+   * Snapshot do documento a partir dos dados SALVOS no planejamento — nunca da
+   * tabela de preços atual (T9/T12): documentos antigos não mudam.
+   */
+  const snapshotDoPlano = (plan: VirtualPlanRecord | null): PlanDocSnapshot | null => {
+    if (!plan) return null
+    const isHof = (plan.kind || 'hof') === 'hof'
+    const state = loadPlanningState(plan)
+    const payment = normalizePlan({ installments: state.paymentPlan.map(mapPaymentRecord) })
+    const notas = isHof ? { desconto: 0 } : parseDentalNotas(state.annotations)
+    return {
+      planId: plan.id,
+      pacienteId: patient?.id,
+      kind: isHof ? 'hof' : 'odontologico',
+      title: plan.title,
+      pacienteNome: patient?.name,
+      pacienteCpf: patient?.cpf,
+      approvalStatus: plan.approval_status || 'rascunho',
+      approvedAt: plan.approved_at,
+      approvedBy: plan.approved_by,
+      versao: plan.plan_version || 1,
+      treatments: isHof
+        ? mapTreatmentRecords(state.treatments)
+        : mapDentalTratamentos(state.treatments),
+      paymentPlan: payment.installments,
+      desconto: notas.desconto,
+    }
+  }
 
   /** Carrega um registro de planejamento no editor da aba correspondente. */
   const openPlanInEditor = (plan: VirtualPlanRecord) => {
@@ -374,6 +428,7 @@ export default function PacienteDetail() {
       const aprovado = await updateVirtualPlan(plan.id, {
         approval_status: 'aprovado',
         approved_at: new Date().toISOString(),
+        approved_by: user?.name || '—',
       })
       setPlans((prev) => prev.map((p) => (p.id === aprovado.id ? aprovado : p)))
       if (kind === 'hof') setActiveHofPlan(aprovado)
@@ -402,6 +457,186 @@ export default function PacienteDetail() {
     } finally {
       setApprovingPlan(false)
     }
+  }
+
+  /** Salva imediatamente o planejamento ativo (botão "Salvar planejamento"). */
+  const salvarAgora = async (kind: PlanKind) => {
+    const plan = kind === 'hof' ? activeHofPlan : activeDentalPlan
+    if (!plan) return
+    if (plan.approval_status === 'aprovado') {
+      toast({ title: 'Planejamento aprovado — já está salvo e bloqueado para edição.' })
+      return
+    }
+    try {
+      if (kind === 'hof') {
+        await savePlanningState(plan, {
+          treatments: hoofTreatments.map((t) => ({
+            id: t.id,
+            procedureId: t.procedureId,
+            procedureName: t.procedureName,
+            tooth: t.tooth,
+            region: t.region,
+            faces: t.faces,
+            price: t.price,
+          })),
+          paymentPlan: hoofPaymentPlan.installments.map((i) => ({
+            id: i.id,
+            kind: i.kind,
+            method: i.method,
+            amount: i.amount,
+            due_date: i.due_date,
+            installments_count: i.installments_count ?? 1,
+          })),
+        })
+      } else {
+        await savePlanningState(plan, {
+          treatments: dentalTreatments.map((t) => ({
+            ...t,
+            id: t.id,
+            procedureId: t.procedureId,
+            procedureName: t.procedureName,
+            tooth: t.tooth,
+            region: t.region,
+            faces: t.faces,
+            price: t.price,
+          })),
+          paymentPlan: dentalPaymentPlan.installments.map((i) => ({
+            id: i.id,
+            kind: i.kind,
+            method: i.method,
+            amount: i.amount,
+            due_date: i.due_date,
+            installments_count: i.installments_count ?? 1,
+          })),
+          annotations: JSON.stringify({ marcas: dentalMarcas, desconto: dentalDesconto }),
+        })
+      }
+      toast({ title: 'Planejamento salvo!' })
+    } catch (_) {
+      toast({ title: 'Erro ao salvar o planejamento', variant: 'destructive' })
+    }
+  }
+
+  /**
+   * Arquiva o documento gerado na área Documentos do Planejamento (snapshot
+   * dos dados salvos + auditoria). Idempotente por dia/tipo — reabrir a prévia
+   * no mesmo dia não duplica o registro.
+   */
+  const arquivarDoc = async (kind: PlanKind, signature: boolean) => {
+    const plan = kind === 'hof' ? activeHofPlan : activeDentalPlan
+    const s = snapshotDoPlano(plan)
+    if (!plan || !s) return
+    const tipo = signature ? 'aceite' : s.approvalStatus === 'aprovado' ? 'aprovado' : 'orcamento'
+    const hoje = new Date().toISOString().slice(0, 10)
+    const jaExiste = documents.some((d) => {
+      const m = parseArchiveMeta(d)
+      return m.planId === plan.id && d.document_type === tipo && d.created.slice(0, 10) === hoje
+    })
+    if (jaExiste) return
+    const o: DocOptions = {
+      modo: 'detalhado',
+      hideValues: false,
+      signature,
+      emitidoPor: user?.name || '—',
+      emitidoEm: new Date().toISOString(),
+    }
+    try {
+      const rec = await createDocument(
+        buildArchiveDocument(s, o, {
+          geradoEm: new Date().toISOString(),
+          geradoPor: user?.name || '—',
+          versao: plan.plan_version || 1,
+          assinaturaStatus:
+            plan.signature_status === 'assinado' ? 'assinado' : 'aguardando_assinatura',
+          assinadoEm: plan.signed_at,
+          assinadoRegistradoPor: plan.signed_by,
+          planId: plan.id,
+          planTitle: plan.title,
+        }),
+      )
+      setDocuments((prev) => [rec, ...prev])
+    } catch (_) {
+      /* arquivamento silencioso — a prévia/impressão continua funcionando */
+    }
+  }
+
+  /** Abre a prévia (Visualizar impressão / Imprimir / PDF / WhatsApp / assinatura). */
+  const abrirPrintModal = (kind: PlanKind, signature = false) => {
+    setPrintKind(kind)
+    setPrintSignature(signature)
+    setPrintModalOpen(true)
+    arquivarDoc(kind, signature)
+  }
+
+  /** Marca o planejamento como assinado pelo paciente (data + usuário). */
+  const marcarAssinado = async (planId: string, signedDate: string, por: string) => {
+    const upd = await updateVirtualPlan(planId, {
+      signature_status: 'assinado',
+      signed_at: new Date(`${signedDate}T12:00:00`).toISOString(),
+      signed_by: por,
+    })
+    setPlans((prev) => prev.map((p) => (p.id === upd.id ? upd : p)))
+    setActiveHofPlan((p) => (p && p.id === upd.id ? upd : p))
+    setActiveDentalPlan((p) => (p && p.id === upd.id ? upd : p))
+    if (id) setDocuments(await getDocuments(id))
+  }
+
+  /** Anexa o PDF digitalizado assinado (botão "Anexar documento assinado"). */
+  const handleAttachSigned = async (
+    kind: PlanKind,
+    file: File,
+    signedDate: string,
+    por: string,
+  ) => {
+    const plan = kind === 'hof' ? activeHofPlan : activeDentalPlan
+    const s = snapshotDoPlano(plan)
+    if (!plan || !s) throw new Error('Nenhum planejamento ativo')
+    const o: DocOptions = {
+      modo: 'detalhado',
+      hideValues: false,
+      signature: true,
+      emitidoPor: por,
+      emitidoEm: new Date().toISOString(),
+    }
+    const rec = await createDocument({
+      ...buildArchiveDocument(s, o, {
+        geradoEm: new Date().toISOString(),
+        geradoPor: por,
+        versao: plan.plan_version || 1,
+        assinaturaStatus: 'assinado',
+        assinadoEm: signedDate,
+        assinadoRegistradoPor: por,
+        planId: plan.id,
+        planTitle: plan.title,
+      }),
+      document_type: 'assinado',
+    })
+    await attachSignedPdf(rec.id, file)
+    await marcarAssinado(plan.id, signedDate, por)
+  }
+
+  /** Registra a assinatura num documento arquivado (área Documentos). */
+  const handleRegisterSignature = async (docId: string, signedDate: string) => {
+    const doc = documents.find((d) => d.id === docId)
+    if (!doc) throw new Error('Documento não encontrado')
+    const por = user?.name || '—'
+    await updateDocument(docId, {
+      content: contentComAssinatura(doc.content || '', signedDate, por),
+    })
+    const meta = parseArchiveMeta(doc)
+    if (meta.planId) await marcarAssinado(meta.planId, signedDate, por)
+    else if (id) setDocuments(await getDocuments(id))
+  }
+
+  /** Anexa o PDF digitalizado num documento já arquivado (área Documentos). */
+  const handleAttachPdfToDoc = async (docId: string, file: File) => {
+    const doc = documents.find((d) => d.id === docId)
+    if (!doc) throw new Error('Documento não encontrado')
+    await attachSignedPdf(docId, file)
+    const meta = parseArchiveMeta(doc)
+    const por = user?.name || '—'
+    if (meta.planId) await marcarAssinado(meta.planId, new Date().toISOString().slice(0, 10), por)
+    else if (id) setDocuments(await getDocuments(id))
   }
 
   const loadAllData = async () => {
