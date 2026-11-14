@@ -43,9 +43,8 @@ export type CondicaoClinica =
   | 'implante'
   | 'canal'
   | 'ausente'
-  | 'edentulo'
   | 'fratura'
-  | 'raspagem'
+  | 'lesao_raiz_osso'
 
 export const CONDICOES: {
   key: CondicaoClinica
@@ -104,13 +103,6 @@ export const CONDICOES: {
     descricao: 'Extraído/ausente (X cinza)',
   },
   {
-    key: 'edentulo',
-    label: 'Região edêntula',
-    cor: '#B7A99A',
-    simbolo: '~',
-    descricao: 'Região edêntula (hachura bege)',
-  },
-  {
     key: 'fratura',
     label: 'Fratura',
     cor: '#A34A2E',
@@ -118,13 +110,21 @@ export const CONDICOES: {
     descricao: 'Fratura/desgaste (marca terracota)',
   },
   {
-    key: 'raspagem',
-    label: 'Raspagem/periodonto',
-    cor: '#C66B4D',
-    simbolo: '•',
-    descricao: 'Raspagem, pontos de sangramento (terracota)',
+    key: 'lesao_raiz_osso',
+    label: 'Lesão raíz/osso/periodonto',
+    cor: '#D81B60',
+    simbolo: 'L',
+    descricao: 'Lesão de raiz/osso/periodonto (rosa vivo)',
   },
 ]
+
+/**
+ * Type guard: só aceita chaves que existem hoje na lista de condições.
+ * Planos antigos persistidos podem conter chaves removidas (ex. 'edentulo',
+ * 'raspagem') — ao reabrir, valores desconhecidos são ignorados sem erro.
+ */
+export const isCondicaoValida = (v: unknown): v is CondicaoClinica =>
+  CONDICOES.some((c) => c.key === v)
 
 export const condicaoInfo = (key: CondicaoClinica) =>
   CONDICOES.find((c) => c.key === key) || CONDICOES[0]

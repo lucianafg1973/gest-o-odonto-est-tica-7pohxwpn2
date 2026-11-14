@@ -11,7 +11,6 @@ import {
   DECIDUOUS_UPPER_LEFT,
   DECIDUOUS_LOWER_RIGHT,
   DECIDUOUS_LOWER_LEFT,
-  FACE_LABEL,
 } from '@/lib/tooth-data'
 import { shapeDeFDI, faceRects, tipoDeFDI } from '@/lib/tooth-shapes'
 
@@ -399,41 +398,6 @@ export function OdontogramaClinico({
           />
         ))}
       </div>
-      {/* Legenda */}
-      <Legenda />
-    </div>
-  )
-}
-
-function Legenda() {
-  return (
-    <div className="pt-2 space-y-1">
-      <p className="text-[10px] font-bold uppercase text-[#6B4F42]">Legenda</p>
-      <div className="flex flex-wrap gap-x-3 gap-y-1">
-        {[
-          { cor: '#C0392B', label: 'Cárie' },
-          { cor: '#2E6FB7', label: 'Restauração' },
-          { cor: '#D4AF37', label: 'Coroa/prótese fixa' },
-          { cor: '#7D5BA6', label: 'Prótese removível' },
-          { cor: '#2E8B57', label: 'Implante' },
-          { cor: '#E67E22', label: 'Canal' },
-          { cor: '#94A3B8', label: 'Ausente' },
-          { cor: '#C0392B', label: 'Lesão (contador)' },
-        ].map((l) => (
-          <span key={l.label} className="flex items-center gap-1 text-[10px] text-[#2D1B14]">
-            <span
-              className="inline-block w-2.5 h-2.5 rounded-sm border"
-              style={{ background: `${l.cor}55`, borderColor: l.cor }}
-            />
-            {l.label}
-          </span>
-        ))}
-      </div>
-      <p className="text-[10px] text-[#6B4F42]">
-        {Object.entries(FACE_LABEL)
-          .map(([k, v]) => `${k} = ${v}`)
-          .join(' · ')}
-      </p>
     </div>
   )
 }

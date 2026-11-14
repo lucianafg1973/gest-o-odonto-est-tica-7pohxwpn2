@@ -23,7 +23,13 @@ import { Plus, Pencil, CheckCircle2, Ban, RotateCcw, Trash2, Bone, Lock } from '
 import { ProcedureRecord } from '@/services/procedures'
 import { formatCurrency } from '@/lib/price-calculation'
 import type { Tratamento, CondicaoClinica } from '@/lib/plan-types'
-import { CONDICOES, STATUS_LABEL, STATUS_COR, tratamentoFromProcedure } from '@/lib/plan-types'
+import {
+  CONDICOES,
+  STATUS_LABEL,
+  STATUS_COR,
+  tratamentoFromProcedure,
+  isCondicaoValida,
+} from '@/lib/plan-types'
 import {
   orcamentoCents,
   orcamentoTotal,
@@ -141,9 +147,15 @@ export function OdontologicoTab({
     })
     Object.entries(marcas).forEach(([k, m]) => {
       const v = map[k] || { condicoes: [], faces: {}, lesoes: 0 }
-      v.condicoes = m.condicoes || []
-      v.faces = m.faces || {}
-      v.ausente = (m.condicoes || []).includes('ausente')
+      // Condições desconhecidas (chaves removidas do catálogo, ex. planos
+      // antigos com 'edentulo'/'raspagem') são ignoradas sem erro.
+      v.condicoes = (m.condicoes || []).filter(isCondicaoValida)
+      const faces: typeof v.faces = {}
+      Object.entries(m.faces || {}).forEach(([f, c]) => {
+        if (isCondicaoValida(c)) faces[f] = c
+      })
+      v.faces = faces
+      v.ausente = v.condicoes.includes('ausente')
       map[k] = v
     })
     return map
@@ -304,7 +316,7 @@ export function OdontologicoTab({
         {/* Condições clínicas (exame) */}
         <div className="flex flex-wrap items-center gap-1.5 bg-white border border-[#EDE3D8] rounded-xl p-2">
           <span className="text-[10px] font-bold uppercase text-[#6B4F42] mr-1">
-            Condição (clique no dente):
+            Condições pré-existentes (clique no dente):
           </span>
           {CONDICOES.map((c) => (
             <button
