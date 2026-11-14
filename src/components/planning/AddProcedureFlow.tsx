@@ -17,8 +17,9 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select'
-import { Search, Trash2, MousePointerClick, Plus, X } from 'lucide-react'
+import { Search, Trash2, MousePointerClick, Plus, X, Loader2 } from 'lucide-react'
 import type { ProcedureRecord } from '@/services/procedures'
+import { getProcedures } from '@/services/procedures'
 import { formatCurrency } from '@/lib/price-calculation'
 import { precoEfetivo } from '@/lib/pricing-engine'
 import type { Tratamento } from '@/lib/plan-types'
@@ -34,6 +35,14 @@ import { OdontogramaClinico, ToothVisual } from '@/components/planning/Odontogra
  *     por linha e valor editável). Permite acumular VÁRIOS tratamentos no mesmo
  *     dente (lista agrupada por dente com subtotal) antes de confirmar — cada
  *     tratamento segue como registro individual no planejamento.
+ */
+
+/**
+ * BUGFIX 0.0.42: com a tabela de procedimentos vazia/inativa, NEM a busca nem
+ * os chips de faces tinham qualquer efeito (não havia linha para clicar) — o
+ * usuário lia isso como "nada acontece". Agora o painel carrega a tabela sozinho
+ * se o pai não trouxe nada, e distingue visualmente "tabela vazia" de
+ * "nenhum resultado para esta busca".
  */
 
 /** Ordem canônica de abreviação das faces (ex.: "16 MOD"). */
@@ -85,6 +94,16 @@ export function AddProcedureFlow({
   /** Tratamentos acumulados antes de confirmar. */
   const [pendentes, setPendentes] = useState<Pendente[]>([])
   const [profissionalId, setProfissionalId] = useState('')
+  /** Carregamento da tabela oficial dentro do próprio painel. */
+  const [carregando, setCarregando] = useState(false)
+
+  /**
+   * Fonte de verdade local da tabela: nasce do prop e é recarregada do banco
+   * quando o painel abre sem nenhum procedimento (o pai pode ainda não ter
+   * terminado de carregar, ou ter carregado uma tabela vazia/inativa).
+   */
+  const [tabelaLocal, setTabelaLocal] = useState<ProcedureRecord[]>(procedures)
+  useEffect(() => setTabelaLocal(procedures), [procedures])
 
   // Reabertura limpa: dente inicial (ou nenhum), filtros e lista zerados.
   useEffect(() => {
@@ -97,6 +116,17 @@ export function AddProcedureFlow({
     setPrecos({})
     setFacesPorLinha({})
     setProfissionalId('')
+    // Sem dados no pai → busca a tabela oficial direto do banco.
+    if (procedures.length === 0) {
+      setCarregando(true)
+      getProcedures()
+        .then((regs) => {
+          setTabelaLocal(regs)
+          setCarregando(false)
+        })
+        .catch(() => setCarregando(false))
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open, denteInicial])
 
   /** Trocar o dente zera as faces escolhidas por linha (pertencem ao dente). */
@@ -105,7 +135,14 @@ export function AddProcedureFlow({
     setFacesPorLinha({})
   }
 
-  const ativos = useMemo(() => procedures.filter((p) => p.active !== false), [procedures])
+  // Itens ativos da tabela oficial; se NENHUM item estiver ativo (ex.: tabela
+  // legada anterior à importação do CSV, marcada active=false), cai para a
+  // tabela completa — o painel nunca fica sem opções (bug 0.0.41: sem linhas,
+  // nem a busca nem os chips de faces tinham efeito).
+  const ativos = useMemo(() => {
+    const act = tabelaLocal.filter((p) => p.active !== false)
+    return act.length > 0 ? act : tabelaLocal
+  }, [tabelaLocal])
 
   const especialidades = useMemo(
     () => Array.from(new Set(ativos.map((p) => p.specialty).filter(Boolean) as string[])).sort(),
@@ -308,100 +345,121 @@ export function AddProcedureFlow({
             </div>
 
             <div className="flex-1 min-h-0 overflow-y-auto border border-[#EDE3D8] rounded-xl bg-white">
-              <table className="w-full text-xs">
-                <thead className="sticky top-0 bg-[#FAF6F0] z-10">
-                  <tr className="text-left text-[10px] uppercase text-[#6B4F42] border-b border-[#EDE3D8]">
-                    <th className="py-2 px-2 font-semibold">Código</th>
-                    <th className="py-2 px-2 font-semibold">Procedimento</th>
-                    <th className="py-2 px-2 font-semibold">Especialidade/Família</th>
-                    <th className="py-2 px-2 font-semibold">
-                      Faces {dente != null ? `(${dente})` : ''}
-                    </th>
-                    <th className="py-2 px-2 font-semibold w-24">Valor (R$)</th>
-                    <th className="py-2 px-2"></th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {lista.map((p) => {
-                    const facesLinha = facesPorLinha[p.id] || []
-                    return (
-                      <tr key={p.id} className="border-b border-[#F5EEE6] hover:bg-[#FAF6F0]/60">
-                        <td className="py-1.5 px-2 text-[#6B4F42] whitespace-nowrap">
-                          {p.external_code || '—'}
-                        </td>
-                        <td className="py-1.5 px-2 font-semibold text-[#2D1B14]">{p.name}</td>
-                        <td className="py-1.5 px-2 text-[10px] text-[#6B4F42]">
-                          {p.specialty || '—'}
-                          {p.family ? ` · ${p.family}` : ''}
-                        </td>
-                        <td className="py-1.5 px-2">
-                          {dente == null ? (
-                            <span className="text-[10px] text-[#B7A99A] italic">sem dente</span>
-                          ) : (
-                            <div className="flex flex-wrap gap-0.5">
-                              {facesDoDente.map((f) => {
-                                const ativo = facesLinha.includes(f)
-                                return (
-                                  <button
-                                    key={f}
-                                    type="button"
-                                    title={FACE_LABEL[f] || f}
-                                    className={`px-1.5 py-0.5 rounded-md border text-[10px] font-bold ${
-                                      ativo
-                                        ? 'bg-[#C66B4D] text-white border-[#C66B4D]'
-                                        : 'bg-white text-[#6B4F42] border-[#EDE3D8]'
-                                    }`}
-                                    onClick={() => toggleFaceLinha(p.id, f)}
-                                  >
-                                    {f}
-                                  </button>
-                                )
-                              })}
-                            </div>
-                          )}
-                        </td>
-                        <td className="py-1.5 px-2">
-                          <Input
-                            type="number"
-                            min={0}
-                            step="0.01"
-                            value={precoStrDe(p)}
-                            onChange={(e) =>
-                              setPrecos((prev) => ({ ...prev, [p.id]: e.target.value }))
-                            }
-                            className="w-20 h-7 text-xs bg-white"
-                            title="Preço da tabela oficial — pode ser editado aqui"
-                          />
-                        </td>
-                        <td className="py-1.5 px-2">
-                          <Button
-                            type="button"
-                            size="sm"
-                            className="btn-terracotta-gold text-[10px] h-7 px-2"
-                            onClick={() => {
-                              adicionar(p)
-                              setBusca('')
-                              setBuscaSemAcento('')
-                            }}
-                          >
-                            <Plus className="w-3 h-3 mr-0.5" /> Adicionar
-                          </Button>
+              {carregando ? (
+                <div className="flex items-center justify-center gap-2 py-10 text-xs text-[#6B4F42]">
+                  <Loader2 className="w-4 h-4 animate-spin text-[#C66B4D]" />
+                  Carregando tabela de procedimentos…
+                </div>
+              ) : (
+                <table className="w-full text-xs">
+                  <thead className="sticky top-0 bg-[#FAF6F0] z-10">
+                    <tr className="text-left text-[10px] uppercase text-[#6B4F42] border-b border-[#EDE3D8]">
+                      <th className="py-2 px-2 font-semibold">Código</th>
+                      <th className="py-2 px-2 font-semibold">Procedimento</th>
+                      <th className="py-2 px-2 font-semibold">Especialidade/Família</th>
+                      <th className="py-2 px-2 font-semibold">
+                        Faces {dente != null ? `(${dente})` : ''}
+                      </th>
+                      <th className="py-2 px-2 font-semibold w-24">Valor (R$)</th>
+                      <th className="py-2 px-2"></th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {lista.map((p) => {
+                      const facesLinha = facesPorLinha[p.id] || []
+                      return (
+                        <tr key={p.id} className="border-b border-[#F5EEE6] hover:bg-[#FAF6F0]/60">
+                          <td className="py-1.5 px-2 text-[#6B4F42] whitespace-nowrap">
+                            {p.external_code || '—'}
+                          </td>
+                          <td className="py-1.5 px-2 font-semibold text-[#2D1B14]">{p.name}</td>
+                          <td className="py-1.5 px-2 text-[10px] text-[#6B4F42]">
+                            {p.specialty || '—'}
+                            {p.family ? ` · ${p.family}` : ''}
+                          </td>
+                          <td className="py-1.5 px-2">
+                            {dente == null ? (
+                              <span className="text-[10px] text-[#B7A99A] italic">sem dente</span>
+                            ) : (
+                              <div className="flex flex-wrap gap-0.5">
+                                {facesDoDente.map((f) => {
+                                  const ativo = facesLinha.includes(f)
+                                  return (
+                                    <button
+                                      key={f}
+                                      type="button"
+                                      title={FACE_LABEL[f] || f}
+                                      className={`px-1.5 py-0.5 rounded-md border text-[10px] font-bold ${
+                                        ativo
+                                          ? 'bg-[#C66B4D] text-white border-[#C66B4D]'
+                                          : 'bg-white text-[#6B4F42] border-[#EDE3D8]'
+                                      }`}
+                                      onClick={() => toggleFaceLinha(p.id, f)}
+                                    >
+                                      {f}
+                                    </button>
+                                  )
+                                })}
+                              </div>
+                            )}
+                          </td>
+                          <td className="py-1.5 px-2">
+                            <Input
+                              type="number"
+                              min={0}
+                              step="0.01"
+                              value={precoStrDe(p)}
+                              onChange={(e) =>
+                                setPrecos((prev) => ({ ...prev, [p.id]: e.target.value }))
+                              }
+                              className="w-20 h-7 text-xs bg-white"
+                              title="Preço da tabela oficial — pode ser editado aqui"
+                            />
+                          </td>
+                          <td className="py-1.5 px-2">
+                            <Button
+                              type="button"
+                              size="sm"
+                              className="btn-terracotta-gold text-[10px] h-7 px-2"
+                              onClick={() => {
+                                adicionar(p)
+                                setBusca('')
+                                setBuscaSemAcento('')
+                              }}
+                            >
+                              <Plus className="w-3 h-3 mr-0.5" /> Adicionar
+                            </Button>
+                          </td>
+                        </tr>
+                      )
+                    })}
+                    {lista.length === 0 && ativos.length === 0 && (
+                      <tr>
+                        <td
+                          colSpan={6}
+                          className="py-6 px-4 text-center text-[11px] text-amber-800 bg-amber-50"
+                        >
+                          A tabela de procedimentos está vazia ou sem itens ativos. Importe o CSV
+                          oficial em <strong>Financeiro → Precificação → Importar CSV</strong> para
+                          habilitar a busca, as faces e os valores aqui.
                         </td>
                       </tr>
-                    )
-                  })}
-                  {lista.length === 0 && (
-                    <tr>
-                      <td
-                        colSpan={6}
-                        className="py-6 text-center text-[11px] text-[#6B4F42] italic"
-                      >
-                        Nenhum procedimento encontrado.
-                      </td>
-                    </tr>
-                  )}
-                </tbody>
-              </table>
+                    )}
+                    {lista.length === 0 && ativos.length > 0 && (
+                      <tr>
+                        <td
+                          colSpan={6}
+                          className="py-6 text-center text-[11px] text-[#6B4F42] italic"
+                        >
+                          Nenhum procedimento encontrado para “{busca}”
+                          {especialidade !== 'todas' ? ` em ${especialidade}` : ''} — verifique a
+                          grafia ou limpe os filtros.
+                        </td>
+                      </tr>
+                    )}
+                  </tbody>
+                </table>
+              )}
             </div>
           </div>
         </div>
