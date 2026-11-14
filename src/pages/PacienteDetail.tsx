@@ -35,7 +35,10 @@ import { getProcedures } from '@/services/procedures'
 import { ProcedureRecord } from '@/services/procedures'
 import { formatCurrency } from '@/lib/price-calculation'
 import { printPlan } from '@/lib/planPrint'
-import { OdontogramNew } from '@/components/planning/OdontogramNew'
+import { OdontologicoTab, type Marcas } from '@/components/planning/OdontologicoTab'
+import type { Tratamento } from '@/lib/plan-types'
+import { orcamentoCents } from '@/lib/orcamento'
+import { getProfessionals } from '@/services/professionals'
 import { FacialPlanning } from '@/components/planning/FacialPlanning'
 import { PaymentInfo, PaymentPlan, normalizePlan } from '@/components/planning/PaymentInfo'
 import { PlanListBar } from '@/components/planning/PlanListBar'
@@ -80,6 +83,67 @@ import { toast } from '@/hooks/use-toast'
 
 export type PlannedTreatment = import('@/components/planning/TreatmentList').TreatmentItem
 
+/**
+ * Converte os registros persistidos do planejamento odontológico (JSON em
+ * virtual_plans.treatments) em Tratamento completo — planos antigos (sem os
+ * campos novos) recebem defaults, preservando dentes/procedimentos/valores.
+ */
+const mapDentalTratamentos = (recs: TreatmentItemRecord[] | null): Tratamento[] =>
+  (recs || []).map((r) => {
+    const t = (r || {}) as Partial<Tratamento>
+    return {
+      id: r.id,
+      procedureId: r.procedureId,
+      procedureName: r.procedureName,
+      procedureCode: t.procedureCode,
+      tooth: r.tooth || '',
+      region: r.region || '',
+      faces: r.faces || [],
+      price: r.price || 0,
+      quantity: t.quantity || 1,
+      categoria: t.categoria || 'tratamento',
+      professionalId: t.professionalId || '',
+      professionalName: t.professionalName || '',
+      status: t.status || 'planejado',
+      dataPlanejamento: t.dataPlanejamento || new Date().toISOString().slice(0, 10),
+      dataExecucao: t.dataExecucao ?? null,
+      evolucao: t.evolucao,
+      materiais: t.materiais,
+      observacoes: t.observacoes || '',
+      componentes: t.componentes,
+      exodontias: t.exodontias,
+      enxerto: t.enxerto,
+      implantesCount: t.implantesCount,
+      tipoProtese: t.tipoProtese,
+      materialProtese: t.materialProtese,
+      laboratorio: t.laboratorio,
+      modalidadePreco: t.modalidadePreco,
+      incluidoNoGlobal: t.incluidoNoGlobal,
+      arcada: t.arcada,
+      proteseProvisoria: t.proteseProvisoria,
+      proteseDefinitiva: t.proteseDefinitiva,
+    }
+  })
+
+/** Marcas clínicas + desconto da aba odontológica — persistidos em annotations. */
+interface DentalNotas {
+  marcas: Marcas
+  desconto: number
+}
+const parseDentalNotas = (raw: string | null | undefined): DentalNotas => {
+  try {
+    if (raw) {
+      const p = JSON.parse(raw)
+      if (p && typeof p === 'object' && !Array.isArray(p)) {
+        return { marcas: p.marcas || {}, desconto: Number(p.desconto) || 0 }
+      }
+    }
+  } catch {
+    /* conteúdo legado (não-JSON) — ignora */
+  }
+  return { marcas: {}, desconto: 0 }
+}
+
 export default function PacienteDetail() {
   const { id } = useParams<{ id: string }>()
   const navigate = useNavigate()
@@ -92,6 +156,7 @@ export default function PacienteDetail() {
   const [transactions, setTransactions] = useState<FinancialTransactionRecord[]>([])
   const [messages, setMessages] = useState<MessageRecord[]>([])
   const [procedures, setProcedures] = useState<ProcedureRecord[]>([])
+  const [professionals, setProfessionals] = useState<{ id: string; name: string }[]>([])
 
   /** Planejamento ativo de cada aba (o que está aberto no editor). */
   const [activeHofPlan, setActiveHofPlan] = useState<VirtualPlanRecord | null>(null)
@@ -111,7 +176,9 @@ export default function PacienteDetail() {
   const [editOpen, setEditOpen] = useState(false)
   const [imageToDelete, setImageToDelete] = useState<ImageRecord | null>(null)
   const [hoofTreatments, setHoofTreatments] = useState<PlannedTreatment[]>([])
-  const [dentalTreatments, setDentalTreatments] = useState<PlannedTreatment[]>([])
+  const [dentalTreatments, setDentalTreatments] = useState<Tratamento[]>([])
+  const [dentalMarcas, setDentalMarcas] = useState<Marcas>({})
+  const [dentalDesconto, setDentalDesconto] = useState(0)
   const [hoofPaymentPlan, setHoofPaymentPlan] = useState<PaymentPlan>({ installments: [] })
   const [dentalPaymentPlan, setDentalPaymentPlan] = useState<PaymentPlan>({ installments: [] })
   const [hofAnnotations, setHofAnnotations] = useState<string | null>(null)
@@ -150,8 +217,13 @@ export default function PacienteDetail() {
       setHofAnnotations(state.annotations ?? null)
     } else {
       setActiveDentalPlan(plan)
-      setDentalTreatments(mapTreatmentRecords(state.treatments))
+      setDentalTreatments(mapDentalTratamentos(state.treatments))
       setDentalPaymentPlan(payment)
+      // Condições clínicas marcadas no odontograma + desconto são persistidos
+      // junto do plano (campo annotations) e reaparecem ao reabrir.
+      const notas = parseDentalNotas(state.annotations)
+      setDentalMarcas(notas.marcas)
+      setDentalDesconto(notas.desconto)
     }
   }
 
@@ -161,14 +233,18 @@ export default function PacienteDetail() {
   const persistPlanning = (
     key: string,
     record: VirtualPlanRecord | null,
-    treatments: PlannedTreatment[],
+    treatments: TreatmentItemRecord[],
     paymentPlan: PaymentPlan,
+    annotations?: string | null,
   ) => {
     if (!record || record.approval_status === 'aprovado') return
     if (saveTimer.current[key]) clearTimeout(saveTimer.current[key])
     saveTimer.current[key] = setTimeout(() => {
       savePlanningState(record, {
+        // O spread preserva os campos extras do Tratamento (status, execução,
+        // protocolos/implantes, condições de pagamento…) no JSON do plano.
         treatments: treatments.map((t) => ({
+          ...t,
           id: t.id,
           procedureId: t.procedureId,
           procedureName: t.procedureName,
@@ -177,6 +253,7 @@ export default function PacienteDetail() {
           faces: t.faces,
           price: t.price,
         })),
+        ...(annotations !== undefined ? { annotations } : {}),
         paymentPlan: paymentPlan.installments.map((i) => ({
           id: i.id,
           kind: i.kind,
@@ -202,8 +279,14 @@ export default function PacienteDetail() {
   }, [hoofTreatments, hoofPaymentPlan, activeHofPlan])
 
   useEffect(() => {
-    persistPlanning('odontologico', activeDentalPlan, dentalTreatments, dentalPaymentPlan)
-  }, [dentalTreatments, dentalPaymentPlan, activeDentalPlan])
+    persistPlanning(
+      'odontologico',
+      activeDentalPlan,
+      dentalTreatments as unknown as TreatmentItemRecord[],
+      dentalPaymentPlan,
+      JSON.stringify({ marcas: dentalMarcas, desconto: dentalDesconto }),
+    )
+  }, [dentalTreatments, dentalPaymentPlan, activeDentalPlan, dentalMarcas, dentalDesconto])
 
   // Salva as anotações de desenho livre do HOF (botão "Salvar Plano" do canvas)
   const handleSaveHofAnnotations = (annotationsJson: string) => {
@@ -335,6 +418,8 @@ export default function PacienteDetail() {
       const trans = await getFinancialTransactions(`patient="${id}"`)
       setTransactions(trans)
       setProcedures(await getProcedures())
+      const pros = await getProfessionals()
+      setProfessionals(pros.map((p) => ({ id: p.id, name: p.name })))
       setMessages(await getMessagesByPatient(id))
       // Todos os planejamentos do paciente (mais recente → mais antigo)
       const vp = await getVirtualPlans(id)
@@ -458,6 +543,15 @@ export default function PacienteDetail() {
 
   const tabTriggerClass = 'text-xs data-[state=active]:bg-[#C66B4D] data-[state=active]:text-white'
   const photoUrl = getPatientPhotoUrl(patient)
+
+  // Total do planejamento odontológico em centavos (orçamento − desconto) —
+  // alimenta as condições de pagamento; protocolos globais não somam duas vezes.
+  const dentalOrcCents = orcamentoCents(dentalTreatments)
+  const dentalDescontoC = Math.min(
+    dentalOrcCents,
+    Math.max(0, Math.round((dentalDesconto || 0) * 100)),
+  )
+  const dentalTotal = (dentalOrcCents - dentalDescontoC) / 100
 
   // Total contratado = soma dos procedimentos dos planejamentos aprovados
   // (ou, na falta deles, dos rascunhos abertos) — base do saldo e das recibos.
@@ -739,17 +833,22 @@ export default function PacienteDetail() {
             {activeDentalPlan ? (
               <>
                 {approvalBar('odontologico')}
-                <OdontogramNew
+                <OdontologicoTab
                   procedures={procedures}
-                  items={dentalTreatments}
+                  professionals={professionals}
+                  tratamentos={dentalTreatments}
                   onChange={setDentalTreatments}
                   locked={activeDentalPlan.approval_status === 'aprovado'}
+                  desconto={dentalDesconto}
+                  onDescontoChange={setDentalDesconto}
+                  marcas={dentalMarcas}
+                  onMarcasChange={setDentalMarcas}
                 />
                 <PaymentInfo
                   plan={dentalPaymentPlan}
                   onPlanChange={setDentalPaymentPlan}
                   planId={activeDentalPlan.id}
-                  total={dentalTreatments.reduce((s, t) => s + t.price, 0)}
+                  total={dentalTotal}
                   formatCurrency={formatCurrency}
                   locked={activeDentalPlan.approval_status === 'aprovado'}
                 />
