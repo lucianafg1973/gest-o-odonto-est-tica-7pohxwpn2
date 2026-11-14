@@ -169,7 +169,10 @@ export function ImplantPanel({
       componentes: proComp,
       proteseProvisoria: true,
       proteseDefinitiva: true,
-      // No global, os itens complementares listados ficam marcados como incluídos
+      // O próprio protocolo entra no orçamento pelo seu valor (global ou não);
+      // em preço GLOBAL, os complementares já planejados são marcados como
+      // incluídos pela OdontologicoTab (aplicarInclusaoGlobal) — sem cobrança
+      // repetida. Preço individualizado soma item a item.
       incluidoNoGlobal: false,
     }
     onChange([...tratamentos, novo])

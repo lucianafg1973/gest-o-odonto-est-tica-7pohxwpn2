@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import {
   FinancialTransactionRecord,
   updateTransaction,
@@ -83,7 +83,25 @@ export function FinanceiroTab({
   totalContratado = 0,
   onRefresh,
 }: Props) {
-  const [feePercent, setFeePercent] = useState<string>(String(FINANCEIRO_CARD_FEE_DEFAULT))
+  // Taxa de cartão memorizada: a última % usada fica salva no navegador e é
+  // recarregada na próxima visita — sem redigitar a cada pagamento (Passo 4).
+  const FEE_STORAGE_KEY = 'lfg-clinic:taxa-cartao'
+  const [feePercent, setFeePercent] = useState<string>(() => {
+    try {
+      const saved = localStorage.getItem(FEE_STORAGE_KEY)
+      if (saved !== null && saved !== '' && !isNaN(parseFloat(saved))) return saved
+    } catch {
+      /* localStorage indisponível — usa o padrão */
+    }
+    return String(FINANCEIRO_CARD_FEE_DEFAULT)
+  })
+  useEffect(() => {
+    try {
+      localStorage.setItem(FEE_STORAGE_KEY, feePercent)
+    } catch {
+      /* localStorage indisponível — segue sem persistir */
+    }
+  }, [feePercent])
   const receitas = transactions
     .filter((t) => t.transaction_type === 'receita')
     .reduce((s, t) => s + (t.amount || 0), 0)

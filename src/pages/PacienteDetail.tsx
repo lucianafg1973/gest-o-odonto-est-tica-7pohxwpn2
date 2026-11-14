@@ -842,7 +842,12 @@ export default function PacienteDetail() {
                   desconto={dentalDesconto}
                   onDescontoChange={setDentalDesconto}
                   marcas={dentalMarcas}
-                  onMarcasChange={setDentalMarcas}
+                  onMarcasChange={(m) =>
+                    setDentalMarcas(
+                      typeof m === 'function' ? (m as (p: Marcas) => Marcas)(dentalMarcas) : m,
+                    )
+                  }
+                  patientId={id || ''}
                 />
                 <PaymentInfo
                   plan={dentalPaymentPlan}

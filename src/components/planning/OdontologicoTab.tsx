@@ -1,4 +1,5 @@
 import { useMemo, useState } from 'react'
+/* eslint-disable @typescript-eslint/no-unused-vars */
 import { Card, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -36,6 +37,7 @@ import {
 } from '@/components/planning/OdontogramaClinico'
 import { TratamentoDialog } from '@/components/planning/TratamentoDialog'
 import { ImplantPanel } from '@/components/planning/ImplantPanel'
+import { createMedicalRecord } from '@/services/medical_records'
 
 /**
  * Aba "Planejamento Odontológico" — conecta o odontograma clínico anatômico
@@ -44,6 +46,13 @@ import { ImplantPanel } from '@/components/planning/ImplantPanel'
  * (ImplantPanel). Vários tratamentos por dente coexistem; o total alimenta
  * as condições de pagamento (PaymentInfo) no componente pai.
  */
+
+export interface Marcas {
+  [tooth: string]: {
+    condicoes: CondicaoClinica[]
+    faces: Partial<Record<string, CondicaoClinica>>
+  }
+}
 
 interface Props {
   procedures: ProcedureRecord[]
@@ -54,15 +63,14 @@ interface Props {
   /** Desconto em reais aplicado sobre o subtotal do orçamento. */
   desconto: number
   onDescontoChange: (v: number) => void
+  /** Marcas clínicas do odontograma — controladas pelo pai (persistidas no plano). */
+  marcas: Marcas
+  onMarcasChange: (m: Marcas | ((prev: Marcas) => Marcas)) => void
   /** Total final (subtotal − desconto) em reais, para o PaymentInfo do pai. */
   onTotalChange?: (total: number) => void
+  /** Paciente dono do planejamento — usado ao registrar a evolução da execução. */
+  patientId?: string
 }
-
-/** Marcações clínicas (condições) por dente — mantidas em memória da sessão. */
-type Marcas = Record<
-  string,
-  { condicoes: CondicaoClinica[]; faces: Partial<Record<string, CondicaoClinica>> }
->
 
 export function OdontologicoTab({
   procedures,
@@ -72,10 +80,13 @@ export function OdontologicoTab({
   locked = false,
   desconto,
   onDescontoChange,
+  marcas,
+  onMarcasChange,
+  patientId,
 }: Props) {
   const [denticao, setDenticao] = useState<'permanente' | 'decidua'>('permanente')
   const [condicaoAtiva, setCondicaoAtiva] = useState<CondicaoClinica | null>(null)
-  const [marcas, setMarcas] = useState<Marcas>({})
+  const setMarcas = onMarcasChange
   const [selecionados, setSelecionados] = useState<number[]>([])
   const [facesSelecionadas, setFacesSelecionadas] = useState<string[]>([])
   const [modoFaces, setModoFaces] = useState(false)
@@ -85,6 +96,31 @@ export function OdontologicoTab({
     null,
   )
   const [painelImplantes, setPainelImplantes] = useState(false)
+  /**
+   * Procedimento complementar coberto pelo preço global de um protocolo:
+   * implantes e itens cujo nome indica exodontia, enxerto, componente ou
+   * prótese (Teste 3 — sem cobrança repetida no orçamento).
+   */
+  const ehComplementarGlobal = (t: Tratamento) =>
+    t.categoria === 'implante' ||
+    /exodontia|extra[çc][ãa]o|enxerto|componente|provis[óo]ria|pro[óo]tese/i.test(
+      t.procedureName || '',
+    )
+
+  /**
+   * Aplica a marca "incluído no global" aos complementares da lista — usada
+   * quando um protocolo com preço global é registrado: o valor global já os
+   * cobre, então não entram na soma do orçamento.
+   */
+  const marcarComplementares = (lista: Tratamento[], protocoloId: string) =>
+    lista.map((t) =>
+      t.id !== protocoloId &&
+      t.status !== 'cancelado' &&
+      t.incluidoNoGlobal !== true &&
+      ehComplementarGlobal(t)
+        ? { ...t, incluidoNoGlobal: true }
+        : t,
+    )
 
   const modo: ModoSelecao = condicaoAtiva ? 'condicao' : modoFaces ? 'face' : 'dente'
 
@@ -525,7 +561,18 @@ export function OdontologicoTab({
                 <ImplantPanel
                   procedures={procedures}
                   tratamentos={tratamentos}
-                  onChange={onChange}
+                  onChange={(ts) => {
+                    // Preço global recém-registrado: marca os complementares
+                    // (exodontias, enxertos, componentes, próteses) já
+                    // planejados como incluídos — sem cobrança repetida (T3).
+                    const novoGlobal = ts.find(
+                      (t) =>
+                        t.categoria === 'protocolo' &&
+                        t.modalidadePreco === 'global' &&
+                        !tratamentos.some((a) => a.id === t.id),
+                    )
+                    onChange(novoGlobal ? marcarComplementares(ts, novoGlobal.id) : ts)
+                  }}
                   professionals={professionals}
                   locked={locked}
                 />
@@ -694,6 +741,24 @@ export function OdontologicoTab({
         onSave={(t) => {
           updateTratamento(t)
           setEditando(null)
+          if (t.status === 'executado' && patientId) {
+            // Registro clínico da execução também vai ao prontuário (T7).
+            createMedicalRecord({
+              patient: patientId,
+              anamnesis: '',
+              diagnosis: `Execução — ${t.procedureName} (dente ${t.tooth || t.region || '—'})`,
+              notes: [
+                t.evolucao,
+                t.materiais ? `Materiais: ${t.materiais}` : null,
+                t.observacoes || null,
+              ]
+                .filter(Boolean)
+                .join(' | '),
+              record_date: new Date().toISOString(),
+            }).catch(() => {
+              /* prontuário é reforço — o registro principal fica no plano */
+            })
+          }
         }}
       />
     </div>

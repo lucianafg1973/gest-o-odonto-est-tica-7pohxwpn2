@@ -207,10 +207,13 @@ export const REGIOES_LABEL = REGIOES
 /** Total em reais de um item (preço × quantidade), seguro para undefined. */
 export const itemSubtotal = (t: Tratamento) => (t.price || 0) * (t.quantity || 1)
 
-/** Itens válidos para orçamento (não cancelados; globais excluem os incluídos). */
+/**
+ * Itens válidos para orçamento (não cancelados).
+ * Regra do protocolo com PREÇO GLOBAL: itens marcados incluidoNoGlobal=true
+ * NÃO entram na soma — o valor global do protocolo já os cobre.
+ */
 export const itemOrcamentavel = (t: Tratamento) =>
-  t.status !== 'cancelado' &&
-  !(t.incluidoNoGlobal === true && t.categoria === 'protocolo' && t.modalidadePreco === 'global')
+  t.status !== 'cancelado' && t.incluidoNoGlobal !== true
 
 export const facesLabel = (faces: string[]) => (faces.length ? faces.join(', ') : '')
 
