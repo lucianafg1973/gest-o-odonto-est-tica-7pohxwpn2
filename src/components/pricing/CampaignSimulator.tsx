@@ -4,9 +4,8 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/u
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
-import { Badge } from '@/components/ui/badge'
 import { formatCurrency } from '@/lib/price-calculation'
-import { Precificacao, ProcPricingConfig, simularCampanha } from '@/lib/pricing-engine'
+import { ProcPricingConfig } from '@/lib/pricing-engine'
 import { Megaphone, AlertTriangle } from 'lucide-react'
 
 /**
@@ -48,8 +47,8 @@ export default function CampaignSimulator({
       .map((p) => {
         const preco = Number(p.price) || 0
         const custoMateriais = Number(p.material_cost) || 0
-        const custoLab = Number(p.lab_cost) || 0
-        const remunExec = Number(p.executor_fee) || 0
+        const custoLab = Number(p.lab_price) || 0
+        const remunExec = Number(p.executor_cost) || 0
         const minutos = Number(p.duration_minutes) || 0
         const custoHora = horaClinica
         const custoOperacional = (custoHora / 60) * minutos

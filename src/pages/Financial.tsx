@@ -158,7 +158,13 @@ export default function Financial() {
         />
       )}
 
-      {secao === 'campanhas' && <CampaignSimulator horaClinica={horaClinica} />}
+      {secao === 'campanhas' && (
+        <CampaignSimulator
+          procedures={procedures}
+          horaClinica={horaClinica}
+          onClose={() => setSecao('visao')}
+        />
+      )}
 
       {secao === 'indicadores' && (
         <Card className="card-warm">
