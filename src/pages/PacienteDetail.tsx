@@ -764,7 +764,7 @@ export default function PacienteDetail() {
             size="sm"
             type="button"
             className="btn-terracotta-gold text-xs font-semibold"
-            onClick={() => patient && printPlan(plan, patient.name)}
+            onClick={() => abrirPrintModal(kind)}
           >
             <Printer className="w-3.5 h-3.5 mr-1" /> Imprimir planejamento
           </Button>
