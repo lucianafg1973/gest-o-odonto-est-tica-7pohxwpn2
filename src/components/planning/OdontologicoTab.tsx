@@ -19,7 +19,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select'
-import { Plus, Pencil, CheckCircle2, Ban, RotateCcw, Trash2, Bone, Lock } from 'lucide-react'
+import { Plus, Pencil, CheckCircle2, Ban, RotateCcw, Trash2, Bone, Lock, Zap } from 'lucide-react'
 import { ProcedureRecord } from '@/services/procedures'
 import { formatCurrency } from '@/lib/price-calculation'
 import type { Tratamento, CondicaoClinica } from '@/lib/plan-types'
@@ -43,6 +43,7 @@ import {
 } from '@/components/planning/OdontogramaClinico'
 import { TratamentoDialog } from '@/components/planning/TratamentoDialog'
 import { ImplantPanel } from '@/components/planning/ImplantPanel'
+import QuickPickProcedure, { SelecaoRapidaResult } from '@/components/pricing/QuickPickProcedure'
 import { createMedicalRecord } from '@/services/medical_records'
 
 /**
@@ -105,6 +106,9 @@ export function OdontologicoTab({
   const [editando, setEditando] = useState<{ t: Tratamento; modo: 'editar' | 'concluir' } | null>(
     null,
   )
+  /** Seletor rápido (especialidade → família → procedimento); guarda o dente alvo. */
+  const [quickPickOpen, setQuickPickOpen] = useState(false)
+  const [quickPickDente, setQuickPickDente] = useState<string | null>(null)
   const [painelImplantes, setPainelImplantes] = useState(false)
   /**
    * Procedimento complementar coberto pelo preço global de um protocolo:
@@ -235,6 +239,30 @@ export function OdontologicoTab({
   const editarCampo = (id: string, patch: Partial<Tratamento>) =>
     onChange(tratamentos.map((x) => (x.id === id ? { ...x, ...patch } : x)))
 
+  /**
+   * Seletor rápido: especialidade → família → procedimento, com preço oficial
+   * preenchido e profissional executor. Novo tratamento é ADICIONADO à lista
+   * (vários por dente convivem — nada é sobrescrito). Procedimentos de
+   * arcada/região/valor global não exigem faces (dente alvo nulo → faces []).
+   */
+  const abrirQuickPick = (dente: number | null) => {
+    setQuickPickDente(dente != null ? String(dente) : null)
+    setQuickPickOpen(true)
+  }
+
+  const addViaQuickPick = (result: SelecaoRapidaResult) => {
+    const prof = professionals.find((p) => p.id === result.profissionalId)
+    const dente = quickPickDente
+    const t = tratamentoFromProcedure(result.proc, {
+      tooth: dente || '',
+      region: dente || '',
+      faces: dente ? denteFaces : [],
+      price: result.preco || undefined,
+      professionalId: result.profissionalId,
+      professionalName: prof?.name || '',
+    })
+    onChange([...tratamentos, t])
+  }
   /* ---------- orçamento (centavos) ---------- */
   const orcCents = orcamentoCents(tratamentos)
   const descontoC = Math.min(orcCents, Math.max(0, Math.round((desconto || 0) * 100)))
@@ -367,6 +395,17 @@ export function OdontologicoTab({
           <p className="text-xs text-amber-800 bg-amber-50 border border-amber-200 rounded-lg p-2">
             {msgOrcamento}
           </p>
+        )}
+
+        {!locked && (
+          <Button
+            type="button"
+            size="sm"
+            className="btn-terracotta-gold text-xs w-fit"
+            onClick={() => abrirQuickPick(null)}
+          >
+            <Zap className="w-3.5 h-3.5 mr-1" /> Adicionar procedimento
+          </Button>
         )}
 
         {tratamentos.length > 0 && (
@@ -638,6 +677,16 @@ export function OdontologicoTab({
                 <Plus className="w-4 h-4 mr-1" /> Incluir
               </Button>
             </div>
+            <Button
+              type="button"
+              size="sm"
+              variant="outline"
+              disabled={locked}
+              className="w-full text-xs text-[#C66B4D] border-[#C66B4D]/40"
+              onClick={() => abrirQuickPick(denteAberto)}
+            >
+              <Zap className="w-3.5 h-3.5 mr-1" /> Adicionar procedimento (seletor rápido)
+            </Button>
 
             {denteItems.length === 0 && (
               <p className="text-[11px] text-[#6B4F42]">Nenhum tratamento neste dente ainda.</p>
@@ -746,6 +795,15 @@ export function OdontologicoTab({
           </div>
         </DialogContent>
       </Dialog>
+
+      {/* ---------- Seletor rápido de procedimentos ---------- */}
+      <QuickPickProcedure
+        open={quickPickOpen}
+        procedures={procedures}
+        profissionais={professionals}
+        onClose={() => setQuickPickOpen(false)}
+        onAdd={addViaQuickPick}
+      />
 
       {/* ---------- Editar / Concluir um tratamento ---------- */}
       <TratamentoDialog

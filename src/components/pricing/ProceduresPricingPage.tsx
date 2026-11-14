@@ -20,7 +20,7 @@ import {
   FAMILY_SUGGESTIONS,
   SPECIALTIES,
 } from '@/lib/pricing-engine'
-import { CSVRow, publicarCsv, parseCsv } from '@/lib/csv-import'
+import { CsvRow, publicarCsv, parseCsv } from '@/lib/csv-import'
 import { Upload, Search, Pencil, RefreshCw, Download, Trash2 } from 'lucide-react'
 
 /**
@@ -37,14 +37,14 @@ interface Props {
 type Precificado = { proc: ProcedureRecord; p: ReturnType<typeof precificar> }
 
 export default function ProceduresPricingPage({ procedures, horaClinica, onReload }: Props) {
-  const { profile } = useAuth()
+  const { user: profile } = useAuth()
   const { toast } = useToast()
   const fileRef = useRef<HTMLInputElement>(null)
   const [busca, setBusca] = useState('')
   const [especialidadeFiltro, setEspecialidadeFiltro] = useState('')
   const [editando, setEditando] = useState<ProcedureRecord | null>(null)
   const [simulando, setSimulando] = useState<Precificado | null>(null)
-  const [rows, setRows] = useState<CSVRow[] | null>(null)
+  const [rows, setRows] = useState<CsvRow[] | null>(null)
   const [publicando, setPublicando] = useState(false)
   const [cfg, setCfg] = useState<ProcPricingConfig>(DEFAULT_PRICING_CONFIG)
   const [mostrarPendentes, setMostrarPendentes] = useState(false)
@@ -377,12 +377,10 @@ export default function ProceduresPricingPage({ procedures, horaClinica, onReloa
       {editando && (
         <ProcedurePriceDialog
           procedure={editando}
-          horaClinica={horaClinica}
-          onClose={() => setEditando(null)}
-          onSaved={(price) => {
-            salvarPreco(editando, price)
-            setEditando(null)
-          }}
+          clinicalHourValue={horaClinica}
+          open={!!editando}
+          onOpenChange={(o) => !o && setEditando(null)}
+          onSaved={onReload}
         />
       )}
 
@@ -398,6 +396,6 @@ function especialidadesUnicas(list: Precificado[]): string[] {
   return Array.from(new Set(list.map((x) => x.proc.specialty).filter(Boolean) as string[])).sort()
 }
 
-function parseCsvLocal(text: string): CSVRow[] {
+function parseCsvLocal(text: string): CsvRow[] {
   return parseCsv(text).rows
 }

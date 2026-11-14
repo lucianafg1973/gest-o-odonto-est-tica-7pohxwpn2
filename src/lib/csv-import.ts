@@ -191,8 +191,8 @@ export async function publicarCsv(
         await pb.collection('procedures').update(existing.id, data)
         result.atualizados++
       } else {
-        const rec = await pb.collection('procedures').create(data)
-        byExternal.set(key, rec as ProcedureRecord)
+        const rec = await pb.collection('procedures').create<ProcedureRecord>(data)
+        byExternal.set(key, rec)
         result.criados++
       }
       if (pendente) result.pendentes++

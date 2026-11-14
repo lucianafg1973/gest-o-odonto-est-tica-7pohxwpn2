@@ -3,14 +3,14 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/u
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import { formatCurrency } from '@/lib/price-calculation'
-import { CSVRow } from '@/lib/csv-import'
+import { CsvRow } from '@/lib/csv-import'
 
 /**
  * PRÉVIA DA IMPORTAÇÃO — o usuário confere as linhas antes de publicar como
  * tabela oficial. Linhas sem preço aparecem marcadas como pendentes.
  */
 interface Props {
-  rows: CSVRow[]
+  rows: CsvRow[]
   onCancel: () => void
   onConfirm: () => void
   publicando: boolean

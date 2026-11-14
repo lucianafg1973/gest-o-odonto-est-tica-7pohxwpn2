@@ -62,7 +62,7 @@ export async function updateProcedureWithHistory(
     : []
   const changes = entries
     .map(([field, to]) => {
-      const from = (procedure as Record<string, unknown>)[field]
+      const from = (procedure as unknown as Record<string, unknown>)[field]
       if (Number(from) === Number(to)) return null
       return { at: new Date().toISOString(), by: userName, field, from, to }
     })
