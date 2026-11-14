@@ -37,6 +37,8 @@ export interface DocInstallment {
 
 export interface PlanDocSnapshot {
   planId: string
+  /** Id do paciente (relation documents.patient ao arquivar). */
+  pacienteId?: string
   kind: 'hof' | 'odontologico'
   title?: string
   pacienteNome?: string

@@ -41,6 +41,14 @@ export interface VirtualPlanRecord {
   /** Fluxo de aprovação: rascunho (editável) ou aprovado (bloqueado). */
   approval_status?: PlanApprovalStatus
   approved_at?: string | null
+  /** Nome do usuário que aprovou (migração 0013). */
+  approved_by?: string | null
+  /** Nº da versão do planejamento (migração 0013). */
+  plan_version?: number | null
+  /** Assinatura do PACIENTE — independente da aprovação (migração 0014). */
+  signature_status?: 'nao_assinado' | 'assinado' | null
+  signed_at?: string | null
+  signed_by?: string | null
   /** Data do planejamento (para a lista do mais recente → mais antigo). */
   plan_date?: string | null
   created: string

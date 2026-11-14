@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2026-11-14T12:10:34.859Z",
+  "generatedAt": "2026-11-14T12:57:35.651Z",
   "collections": [
     {
       "name": "users",
@@ -618,6 +618,25 @@
         },
         {
           "name": "approved_by",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "signature_status",
+          "type": "select",
+          "required": false,
+          "system": false,
+          "selectValues": ["nao_assinado", "assinado"]
+        },
+        {
+          "name": "signed_at",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "signed_by",
           "type": "text",
           "required": false,
           "system": false
