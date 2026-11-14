@@ -292,7 +292,7 @@ function ArcadaSvg({
       width="100%"
       viewBox={`0 0 ${width} ${height}`}
       preserveAspectRatio="xMidYMid meet"
-      className="block max-w-full select-none"
+      className="block h-auto w-full select-none"
       role="group"
       aria-label={isUpper ? 'Arcada superior' : 'Arcada inferior'}
     >
@@ -376,7 +376,7 @@ export function OdontogramaClinico({
   }, [perm])
 
   return (
-    <div className="space-y-1 min-w-0">
+    <div className="w-full min-w-0 space-y-1 overflow-hidden">
       {/* Arcada superior */}
       <ArcadaSvg
         quads={linhas.sup}

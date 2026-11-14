@@ -226,7 +226,7 @@ export function OdontologicoTab({
   return (
     <div className="space-y-4">
       {/* ---------- Odontograma clínico ---------- */}
-      <Card className="card-warm p-4 space-y-3">
+      <Card className="card-warm p-4 space-y-3 lg:sticky lg:top-16 lg:z-10">
         <div className="flex flex-wrap items-center justify-between gap-2">
           <CardHeader className="p-0 pb-1">
             <CardTitle className="font-serif-title text-base font-bold text-[#2D1B14]">

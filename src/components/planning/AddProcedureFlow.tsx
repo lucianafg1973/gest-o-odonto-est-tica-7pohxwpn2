@@ -86,7 +86,6 @@ export function AddProcedureFlow({
   /** Busca ao digitar a primeira letra — insensível a maiúsculas e acentos. */
   const [busca, setBusca] = useState('')
   const [buscaSemAcento, setBuscaSemAcento] = useState('')
-  const [especialidade, setEspecialidade] = useState<string>('todas')
   /** Valor editável por linha (procId → string do input). */
   const [precos, setPrecos] = useState<Record<string, string>>({})
   /** Faces selecionadas por linha (procId → faces[]). */
@@ -112,7 +111,6 @@ export function AddProcedureFlow({
     setPendentes([])
     setBusca('')
     setBuscaSemAcento('')
-    setEspecialidade('todas')
     setPrecos({})
     setFacesPorLinha({})
     setProfissionalId('')
@@ -144,30 +142,21 @@ export function AddProcedureFlow({
     return act.length > 0 ? act : tabelaLocal
   }, [tabelaLocal])
 
-  const especialidades = useMemo(
-    () => Array.from(new Set(ativos.map((p) => p.specialty).filter(Boolean) as string[])).sort(),
-    [ativos],
-  )
-
   const lista = useMemo(() => {
-    let l = ativos
-    if (especialidade !== 'todas') l = l.filter((p) => p.specialty === especialidade)
     // Filtro insensível a maiúsculas e acentos (busca direta e sem acento) —
     // lista dinâmica: ao digitar a 1ª letra já mostra tudo que começa com ela.
     const qn = buscaSemAcento.trim().toLowerCase()
-    if (qn) {
-      l = l.filter((p) =>
-        [p.name, p.external_code, p.family].some((v) =>
-          (v || '')
-            .normalize('NFD')
-            .replace(/[\u0300-\u036f]/g, '')
-            .toLowerCase()
-            .includes(qn),
-        ),
-      )
-    }
-    return l
-  }, [ativos, especialidade, buscaSemAcento])
+    if (!qn) return ativos
+    return ativos.filter((p) =>
+      [p.name, p.external_code, p.family].some((v) =>
+        (v || '')
+          .normalize('NFD')
+          .replace(/[\u0300-\u036f]/g, '')
+          .toLowerCase()
+          .includes(qn),
+      ),
+    )
+  }, [ativos, buscaSemAcento])
 
   const precoStrDe = (p: ProcedureRecord) => precos[p.id] ?? String(precoEfetivo(p) || 0)
 
@@ -247,7 +236,7 @@ export function AddProcedureFlow({
           </DialogDescription>
         </DialogHeader>
 
-        <div className="flex-1 min-h-0 grid grid-cols-1 lg:grid-cols-[minmax(430px,5fr)_7fr] gap-4 pt-3 overflow-hidden">
+        <div className="flex-1 min-h-0 grid grid-cols-1 lg:grid-cols-[minmax(0,5fr)_minmax(0,7fr)] gap-4 pt-3 overflow-hidden">
           {/* ---------- (1) Odontograma ---------- */}
           <div className="min-h-0 overflow-y-auto pr-1 space-y-3">
             <div className="flex items-center justify-between gap-2">
@@ -327,21 +316,6 @@ export function AddProcedureFlow({
                   className="pl-8 bg-white border-[#EDE3D8] text-xs h-8"
                 />
               </div>
-              <Select value={especialidade} onValueChange={setEspecialidade}>
-                <SelectTrigger className="w-[190px] bg-white text-xs h-8">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent className="max-h-64">
-                  <SelectItem value="todas" className="text-xs">
-                    Todas as especialidades
-                  </SelectItem>
-                  {especialidades.map((s) => (
-                    <SelectItem key={s} value={s} className="text-xs">
-                      {s}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
             </div>
 
             <div className="flex-1 min-h-0 overflow-y-auto border border-[#EDE3D8] rounded-xl bg-white">
@@ -451,9 +425,8 @@ export function AddProcedureFlow({
                           colSpan={6}
                           className="py-6 text-center text-[11px] text-[#6B4F42] italic"
                         >
-                          Nenhum procedimento encontrado para “{busca}”
-                          {especialidade !== 'todas' ? ` em ${especialidade}` : ''} — verifique a
-                          grafia ou limpe os filtros.
+                          Nenhum procedimento encontrado para “{busca}” — verifique a grafia ou
+                          limpe a busca.
                         </td>
                       </tr>
                     )}
