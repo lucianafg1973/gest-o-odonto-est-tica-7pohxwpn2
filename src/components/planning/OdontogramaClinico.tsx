@@ -13,17 +13,23 @@ import {
   DECIDUOUS_LOWER_LEFT,
   FACE_LABEL,
 } from '@/lib/tooth-data'
+import { shapeDeFDI, faceRects, tipoDeFDI } from '@/lib/tooth-shapes'
 
 /**
  * Odontograma anatômico interativo — cada dente é um SVG vetorial desenhado
- * individualmente (coroa dividida em 5 faces clicáveis + raízes). Suporta:
- * seleção de dente único/múltiplo, seleção de face única/múltipla, seleção
- * por quadrante/arcada, marcação de condições clínicas (cores/símbolos) e
- * destaque de dentes com tratamentos planejados.
+ * individualmente (coroa dividida em 5 faces clicáveis + raízes anatômicas),
+ * com contorno marrom (paleta do app) e cores vivas para as condições.
+ * Dentes permanentes e decíduos têm formas distintas; a ordem numérica FDI
+ * segue as arcadas 18–11/21–28, 48–41/31–38, 55–51/61–65 e 85–81/71–75.
  */
 
-const W = 34
-const H = 46
+const W = 40
+const H = 60
+
+/** Contorno padrão (marrom da paleta) e preenchimento do esmalte. */
+const STROKE_MARROM = '#6B4F42'
+const FILL_DENTE = '#FAF6F0'
+const FILL_AUSENTE = '#EDE3D8'
 
 export type ModoSelecao = 'dente' | 'face' | 'condicao'
 
@@ -32,8 +38,8 @@ export interface ToothVisual {
   condicoes: CondicaoClinica[]
   /** Condições marcadas em faces específicas: { "16": {O:'carie'} }. */
   faces: Partial<Record<string, CondicaoClinica>>
-  /** Nº de tratamentos planejados para o dente. */
-  tratamentos: number
+  /** Condição de LESÃO marcada no dente (contador substitui o antigo "tratamento planejado"). */
+  lesoes: number
   /** Implante planejado/instalado. */
   implante?: boolean
   /** Dente ausente/edêntulo. */
@@ -53,37 +59,32 @@ interface Props {
   onFaceClick: (dente: number, face: string, mult: boolean) => void
   denticao: 'permanente' | 'decidua'
   locked?: boolean
-  /** Rótulos curtos sob os dentes (ex.: contagem de tratamentos). */
-  mostrarFaces?: boolean
 }
 
-/* ---------- desenho vetorial do dente ---------- */
+/* ------------------------ desenho vetorial do dente ------------------------ */
 
-/** Uma face da coroa: path da região correspondente, clicável. */
-function FacePath({
+/** Uma face da coroa: retângulo da região correspondente, clicável. */
+function FaceRect({
   dente,
   face,
+  rect,
   cor,
   onClick,
   locked,
 }: {
   dente: number
   face: string
+  rect: { x: number; y: number; w: number; h: number }
   cor?: string
   onClick?: () => void
   locked?: boolean
 }) {
-  const paths: Record<string, string> = {
-    O: 'M 5 30 L 29 30 L 26 44 Q 17 41 8 44 Z',
-    V: 'M 5 30 L 8 44 Q 4 42 4 36 L 4 22 Q 4 18 6 16 L 5 30 Z',
-    L: 'M 29 30 L 26 44 Q 30 42 30 36 L 30 22 Q 30 18 28 16 L 29 30 Z',
-    M: 'M 4 22 Q 4 18 6 16 Q 8 17 10 15 L 10 30 L 5 30 Z',
-    D: 'M 30 22 Q 30 18 28 16 Q 26 17 24 15 L 24 30 L 29 30 Z',
-    C: 'M 10 15 L 10 30 L 24 30 L 24 15 Z',
-  }
   return (
-    <path
-      d={paths[face]}
+    <rect
+      x={rect.x}
+      y={rect.y}
+      width={Math.max(0, rect.w)}
+      height={Math.max(0, rect.h)}
       fill={cor || 'transparent'}
       stroke="none"
       className={locked ? '' : 'cursor-pointer'}
@@ -94,37 +95,6 @@ function FacePath({
       data-tooth={dente}
       data-face={face}
     />
-  )
-}
-
-function RootPath({ ausente, canal }: { ausente?: boolean; canal?: boolean }) {
-  return (
-    <g>
-      <path
-        d="M 8 15 Q 6 12 7 8 Q 8 3 11 2 Q 13 1 14 4 L 14 15 Z"
-        fill={ausente ? '#EDE3D8' : '#FAF6F0'}
-        stroke={canal ? '#E67E22' : '#C9B8A8'}
-        strokeWidth="1"
-      />
-      <path
-        d="M 20 15 Q 22 12 21 8 Q 20 3 17 2 Q 15 1 14 4 L 14 15 Z"
-        fill={ausente ? '#EDE3D8' : '#FAF6F0'}
-        stroke={canal ? '#E67E22' : '#C9B8A8'}
-        strokeWidth="1"
-      />
-    </g>
-  )
-}
-
-/** Ícone de implante (parafuso) desenhado sobre a raiz. */
-function ImplantIcon() {
-  return (
-    <g stroke="#2E8B57" strokeWidth="1.2" fill="none">
-      <line x1="17" y1="14" x2="17" y2="4" />
-      <line x1="13" y1="6" x2="21" y2="6" />
-      <line x1="13" y1="9" x2="21" y2="9" />
-      <line x1="14" y1="12" x2="20" y2="12" />
-    </g>
   )
 }
 
@@ -154,17 +124,20 @@ function ToothSvg({
   // Condição dominante para a cor da coroa (fora das faces clicáveis).
   const cond = vis.condicoes[0]
   const info = cond ? condicaoInfo(cond) : null
+  const shape = useMemo(() => shapeDeFDI(n, isUpper), [n, isUpper])
+  const rects = useMemo(() => faceRects(shape.caixa), [shape])
 
   const coroaFill = vis.ausente
-    ? '#EDE3D8'
+    ? FILL_AUSENTE
     : vis.implante
       ? '#DCF2E4'
       : info
         ? `${info.cor}44`
-        : '#FFFFFF'
-  const coroaStroke = vis.ausente ? '#B7A99A' : info ? info.cor : '#C9B8A8'
+        : FILL_DENTE
+  const coroaStroke = vis.ausente ? '#B7A99A' : info ? info.cor : STROKE_MARROM
 
   const facesCond = vis.faces || {}
+  const tipo = tipoDeFDI(n)
 
   return (
     <svg
@@ -181,22 +154,37 @@ function ToothSvg({
       onClick={(e) => onToothClick(n, e.shiftKey || e.ctrlKey || e.metaKey)}
     >
       <title>{`Dente ${n}`}</title>
-      <g transform={isUpper ? undefined : 'rotate(180 17 23)'}>
-        {/* Coroa (fundo) */}
+      <g transform={isUpper ? undefined : 'rotate(180 20 30)'}>
+        {/* Raízes (atrás da coroa) */}
+        {shape.raizes.map((d, i) => (
+          <path
+            key={i}
+            d={d}
+            fill={vis.ausente ? FILL_AUSENTE : FILL_DENTE}
+            stroke={vis.condicoes.includes('canal') ? '#E67E22' : STROKE_MARROM}
+            strokeWidth="1.2"
+            strokeLinejoin="round"
+          />
+        ))}
+        {/* Coroa */}
         <path
-          d="M 4 15 Q 4 30 8 44 Q 17 41 26 44 Q 30 30 30 15 Q 30 8 26 15 Q 24 12 24 9 Q 24 3 20 2 Q 17 1 17 4 Q 17 1 14 2 Q 10 3 10 9 Q 10 12 8 15 Q 4 8 4 15 Z"
+          d={shape.coroa}
           fill={coroaFill}
           stroke={coroaStroke}
-          strokeWidth="1.4"
+          strokeWidth="1.6"
           strokeLinejoin="round"
         />
         {/* Faces clicáveis sobre a coroa */}
         {modo === 'face' &&
-          ['O', 'V', 'L', 'M', 'D', 'C'].map((f) => (
-            <FacePath
+          (tipo === 'incisivo' || tipo === 'canino'
+            ? ['V', 'L', 'M', 'D', 'C']
+            : ['O', 'V', 'L', 'M', 'D', 'C']
+          ).map((f) => (
+            <FaceRect
               key={f}
               dente={n}
               face={f}
+              rect={rects[f]}
               cor={
                 facesCond[f]
                   ? `${condicaoInfo(facesCond[f]).cor}88`
@@ -211,10 +199,10 @@ function ToothSvg({
         {/* Símbolo da condição (desenhado, não texto — acessível via title) */}
         {info && info.simbolo.trim() && info.key !== 'implante' && (
           <text
-            x="17"
-            y="27"
+            x="20"
+            y="47"
             textAnchor="middle"
-            fontSize="11"
+            fontSize="13"
             fontWeight="bold"
             fill={info.cor}
             pointerEvents="none"
@@ -225,10 +213,10 @@ function ToothSvg({
         {vis.implante && <ImplantIcon />}
         {vis.ausente && (
           <text
-            x="17"
-            y="28"
+            x="20"
+            y="48"
             textAnchor="middle"
-            fontSize="12"
+            fontSize="14"
             fontWeight="bold"
             fill="#94A3B8"
             pointerEvents="none"
@@ -236,27 +224,37 @@ function ToothSvg({
             X
           </text>
         )}
-        {/* Contador de tratamentos planejados */}
-        {vis.tratamentos > 0 && (
+        {/* Contador de LESÕES (substitui o antigo "tratamento planejado") */}
+        {vis.lesoes > 0 && (
           <>
-            <circle cx="28" cy="18" r="6" fill="#C66B4D" />
+            <circle cx="34" cy="10" r="6" fill="#C0392B" />
             <text
-              x="28"
-              y="21"
+              x="34"
+              y="13"
               textAnchor="middle"
               fontSize="8"
               fontWeight="bold"
               fill="white"
               pointerEvents="none"
             >
-              {vis.tratamentos}
+              {vis.lesoes}
             </text>
           </>
         )}
-        {/* Raízes (abaixo da coroa quando invertido) */}
-        <RootPath ausente={vis.ausente} canal={vis.condicoes.includes('canal')} />
       </g>
     </svg>
+  )
+}
+
+/** Ícone de implante (parafuso) desenhado sobre a raiz. */
+function ImplantIcon() {
+  return (
+    <g stroke="#2E8B57" strokeWidth="1.4" fill="none">
+      <line x1="20" y1="24" x2="20" y2="8" />
+      <line x1="15" y1="12" x2="25" y2="12" />
+      <line x1="15" y1="16" x2="25" y2="16" />
+      <line x1="16" y1="20" x2="24" y2="20" />
+    </g>
   )
 }
 
@@ -272,7 +270,6 @@ function QuadrantTeeth({
   onToothClick,
   onFaceClick,
   scale,
-  mostrarFaces,
 }: {
   teeth: number[]
   isUpper: boolean
@@ -284,12 +281,11 @@ function QuadrantTeeth({
   onToothClick: Props['onToothClick']
   onFaceClick: Props['onFaceClick']
   scale: number
-  mostrarFaces?: boolean
 }) {
   return (
     <div className="flex items-end" style={{ gap: 2 }}>
       {teeth.map((n) => {
-        const vis = visual[String(n)] || { condicoes: [], faces: {}, tratamentos: 0 }
+        const vis = visual[String(n)] || { condicoes: [], faces: {}, lesoes: 0 }
         const sel = selecionados.includes(n)
         const facesSel = facesSelecionadas
           .filter((k) => k.startsWith(`${n}:`))
@@ -346,10 +342,9 @@ export function OdontogramaClinico({
   onFaceClick,
   denticao,
   locked,
-  mostrarFaces,
 }: Props) {
   const perm = denticao === 'permanente'
-  const scale = perm ? 1 : 0.8
+  const scale = perm ? 1 : 0.9
 
   const linhas = useMemo(() => {
     if (perm) {
@@ -381,12 +376,11 @@ export function OdontogramaClinico({
             onToothClick={onToothClick}
             onFaceClick={onFaceClick}
             scale={scale}
-            mostrarFaces={mostrarFaces}
           />
         ))}
       </div>
-      {/* Linha média */}
-      <div className="border-t border-dashed border-[#EDE3D8] my-1" />
+      {/* Linha média pontilhada entre as arcadas */}
+      <div className="border-t border-dashed border-[#B7A99A] my-1" />
       {/* Arcada inferior */}
       <div className="flex justify-center items-start gap-1">
         {linhas.inf.map((q, i) => (
@@ -402,7 +396,6 @@ export function OdontogramaClinico({
             onToothClick={onToothClick}
             onFaceClick={onFaceClick}
             scale={scale}
-            mostrarFaces={mostrarFaces}
           />
         ))}
       </div>
@@ -425,7 +418,7 @@ function Legenda() {
           { cor: '#2E8B57', label: 'Implante' },
           { cor: '#E67E22', label: 'Canal' },
           { cor: '#94A3B8', label: 'Ausente' },
-          { cor: '#C66B4D', label: 'Tratamento planejado (contador)' },
+          { cor: '#C0392B', label: 'Lesão (contador)' },
         ].map((l) => (
           <span key={l.label} className="flex items-center gap-1 text-[10px] text-[#2D1B14]">
             <span

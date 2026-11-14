@@ -40,11 +40,15 @@ import { ImplantPanel } from '@/components/planning/ImplantPanel'
 import { createMedicalRecord } from '@/services/medical_records'
 
 /**
- * Aba "Planejamento Odontológico" — conecta o odontograma clínico anatômico
+ * Aba "Planejamento Odontológico" — conecta o odontograma anatômico
  * (OdontogramaClinico) ao diálogo de tratamento (TratamentoDialog), à lista/
  * orçamento em centavos (lib/orcamento) e ao painel de implantes/protocolos
  * (ImplantPanel). Vários tratamentos por dente coexistem; o total alimenta
  * as condições de pagamento (PaymentInfo) no componente pai.
+ *
+ * Contador de lesões: cada tratamento ativo (não cancelado) do dente conta
+ * como uma lesão marcada no odontograma (círculo vermelho) — substitui o
+ * antigo contador "tratamento planejado".
  */
 
 export interface Marcas {
@@ -130,13 +134,13 @@ export function OdontologicoTab({
     tratamentos.forEach((t) => {
       const key = String(t.tooth || '').trim()
       if (!key) return
-      const v = map[key] || { condicoes: [], faces: {}, tratamentos: 0 }
-      if (t.status !== 'cancelado') v.tratamentos += 1
+      const v = map[key] || { condicoes: [], faces: {}, lesoes: 0 }
+      if (t.status !== 'cancelado') v.lesoes += 1
       if (t.categoria === 'implante') v.implante = true
       map[key] = v
     })
     Object.entries(marcas).forEach(([k, m]) => {
-      const v = map[k] || { condicoes: [], faces: {}, tratamentos: 0 }
+      const v = map[k] || { condicoes: [], faces: {}, lesoes: 0 }
       v.condicoes = m.condicoes || []
       v.faces = m.faces || {}
       v.ausente = (m.condicoes || []).includes('ausente')
