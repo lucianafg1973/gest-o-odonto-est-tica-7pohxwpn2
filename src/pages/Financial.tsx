@@ -1,9 +1,17 @@
-import { useMemo, useState } from 'react'
+import { useCallback, useEffect, useState } from 'react'
 import ClinicalHourSheet from '@/components/pricing/ClinicalHourSheet'
 import ProceduresPricingPage from '@/components/pricing/ProceduresPricingPage'
 import CampaignSimulator from '@/components/pricing/CampaignSimulator'
 import { Card, CardContent } from '@/components/ui/card'
 import { formatCurrency } from '@/lib/price-calculation'
+import {
+  calcularHoraClinica,
+  getClinicalHourConfig,
+  getCostItems,
+  ClinicalHourConfig,
+  CostItemRecord,
+} from '@/services/clinical-hour'
+import { getProcedures, ProcedureRecord } from '@/services/procedures'
 import {
   LayoutDashboard,
   ArrowLeftRight,
@@ -24,31 +32,47 @@ const MENU: { key: Secao; label: string; icon: typeof Clock }[] = [
   { key: 'indicadores', label: 'Indicadores de Lucratividade', icon: TrendingUp },
 ]
 
-interface Props {
-  horaClinica: number
-  procedures: import('@/services/procedures').ProcedureRecord[]
-  custosItems: {
-    id: string
-    description: string
-    group: string
-    category?: string
-    amount: number
-    active: boolean
-  }[]
-  configHora: { id: string; [k: string]: unknown } | null
-  onReloadHora: () => void
-}
-
-export default function Financial({
-  horaClinica,
-  procedures,
-  custosItems,
-  configHora,
-  onReloadHora,
-}: Props) {
+/**
+ * FINANCEIRO — página autocontida: carrega os próprios dados (planilha de
+ * custos, capacidade produtiva e tabela única de procedimentos) e deriva a
+ * hora clínica em tempo real, sem props externas.
+ */
+export default function Financial() {
   const [secao, setSecao] = useState<Secao>('visao')
+  const [items, setItems] = useState<CostItemRecord[]>([])
+  const [config, setConfig] = useState<ClinicalHourConfig | null>(null)
+  const [procedures, setProcedures] = useState<ProcedureRecord[]>([])
+  const [loading, setLoading] = useState(true)
 
-  const despesas = custosItems.reduce((s, i) => s + (i.active ? Number(i.amount) || 0 : 0), 0)
+  const reload = useCallback(async () => {
+    try {
+      const [cfg, costItems, procs] = await Promise.all([
+        getClinicalHourConfig().catch(() => null),
+        getCostItems().catch(() => []),
+        getProcedures().catch(() => []),
+      ])
+      setConfig(cfg)
+      setItems(costItems)
+      setProcedures(procs)
+    } finally {
+      setLoading(false)
+    }
+  }, [])
+
+  useEffect(() => {
+    reload()
+  }, [reload])
+
+  const custosMensais = items
+    .filter((i) => i.active !== false)
+    .reduce((s, i) => s + (Number(i.amount) || 0), 0)
+
+  const calculo = calcularHoraClinica(custosMensais, {
+    available_hours: config?.available_hours ?? 480,
+    idle_percent: config?.idle_percent ?? 20,
+    evaluation_extra_percent: config?.evaluation_extra_percent ?? 0,
+  })
+  const horaClinica = calculo.hourCost
 
   return (
     <div className="space-y-6">
@@ -77,23 +101,25 @@ export default function Financial({
         ))}
       </div>
 
+      {loading && <p className="text-xs text-[#6B4F42]">Carregando dados financeiros…</p>}
+
       {secao === 'visao' && (
         <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
           <Card className="card-warm">
             <CardContent className="pt-5">
-              <p className="text-[10px] uppercase text-[#6B4F42]">Hora clínica</p>
-              <p className="text-2xl font-bold text-[#C66B4D]">{formatCurrency(horaClinica)}</p>
-              <p className="text-[11px] text-[#6B4F42]">Custo/hora da equipe e estrutura</p>
+              <p className="text-[10px] uppercase text-[#6B4F42]">Custos fixos mensais</p>
+              <p className="text-2xl font-bold text-[#2D1B14]">{formatCurrency(custosMensais)}</p>
+              <p className="text-[11px] text-[#6B4F42]">
+                {items.filter((i) => i.active !== false).length} despesas ativas na planilha
+              </p>
             </CardContent>
           </Card>
           <Card className="card-warm">
             <CardContent className="pt-5">
-              <p className="text-[10px] uppercase text-[#6B4F42]">
-                Custos fixos mensais (planilha)
-              </p>
-              <p className="text-2xl font-bold text-[#2D1B14]">{formatCurrency(despesas)}</p>
+              <p className="text-[10px] uppercase text-[#6B4F42]">Hora clínica</p>
+              <p className="text-2xl font-bold text-[#C66B4D]">{formatCurrency(horaClinica)}</p>
               <p className="text-[11px] text-[#6B4F42]">
-                {custosItems.filter((i) => i.active).length} despesas ativas
+                {calculo.productiveHours.toFixed(0)} h produtivas/mês
               </p>
             </CardContent>
           </Card>
@@ -101,7 +127,7 @@ export default function Financial({
             <CardContent className="pt-5">
               <p className="text-[10px] uppercase text-[#6B4F42]">Custo por minuto</p>
               <p className="text-2xl font-bold text-[#2D1B14]">
-                {formatCurrency(horaClinica / 60)}
+                {formatCurrency(calculo.minuteCost)}
               </p>
               <p className="text-[11px] text-[#6B4F42]">hora ÷ 60</p>
             </CardContent>
@@ -114,22 +140,21 @@ export default function Financial({
           <CardContent className="pt-5">
             <p className="text-xs text-[#6B4F42]">
               Receitas e despesas continuam na aba Financeiro do paciente e nas transações — esta
-              seção resume os custos fixos da planilha da Hora Clínica ({formatCurrency(despesas)}
+              seção resume os custos fixos da planilha da Hora Clínica (
+              {formatCurrency(custosMensais)}
               /mês).
             </p>
           </CardContent>
         </Card>
       )}
 
-      {secao === 'hora' && (
-        <ClinicalHourSheet items={custosItems} config={configHora} onReload={onReloadHora} />
-      )}
+      {secao === 'hora' && <ClinicalHourSheet items={items} config={config} onReload={reload} />}
 
       {secao === 'procedimentos' && (
         <ProceduresPricingPage
           horaClinica={horaClinica}
           procedures={procedures}
-          onReload={onReloadHora}
+          onReload={reload}
         />
       )}
 

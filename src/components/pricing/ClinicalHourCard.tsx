@@ -1,9 +1,5 @@
 import { useState } from 'react'
-import {
-  ClinicalHourConfig,
-  updateClinicalHourConfig,
-  recalculateClinicalHour,
-} from '@/services/clinical-hour'
+import { ClinicalHourConfig, updateClinicalHourConfig } from '@/services/clinical-hour'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
@@ -48,8 +44,7 @@ export function ClinicalHourCard({ config, onUpdate }: Props) {
         monthly_operating_cost: cost,
         available_clinical_hours: hours,
       })
-      await recalculateClinicalHour()
-      toast({ title: 'Configuração salva e preços recalculados!' })
+      toast({ title: 'Configuração salva — hora clínica recalculada!' })
       onUpdate()
     } catch (err) {
       setErrors(extractFieldErrors(err))
@@ -59,17 +54,13 @@ export function ClinicalHourCard({ config, onUpdate }: Props) {
     }
   }
 
-  const handleRecalculate = async () => {
+  // A hora clínica é derivada dos custos da planilha (cálculo em tempo real,
+  // ver ClinicalHourSheet) — recarregar os dados já atualiza tudo.
+  const handleRecalculate = () => {
     setRecalculating(true)
-    try {
-      await recalculateClinicalHour()
-      toast({ title: 'Preços recalculados!' })
-      onUpdate()
-    } catch {
-      toast({ title: 'Erro ao recalcular', variant: 'destructive' })
-    } finally {
-      setRecalculating(false)
-    }
+    onUpdate()
+    toast({ title: 'Dados recarregados — hora clínica recalculada!' })
+    setRecalculating(false)
   }
 
   return (
