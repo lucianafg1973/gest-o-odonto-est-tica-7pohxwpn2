@@ -14,6 +14,7 @@ import {
   Brain,
   Boxes,
   Receipt,
+  Wallet,
   Settings,
   LogOut,
   Menu,
@@ -41,6 +42,7 @@ const navItems = [
   { label: 'Indicadores', path: '/indicadores', icon: BarChart3 },
   { label: 'LFG Intelligence', path: '/lfg-intelligence', icon: Brain },
   { label: 'Banco de Implantes', path: '/banco-implantes', icon: Boxes },
+  { label: 'Financeiro', path: '/financeiro', icon: Wallet },
   { label: 'Tabela de Preços', path: '/tabela-precos', icon: Receipt },
   { label: 'Configurações', path: '/configuracoes', icon: Settings },
 ]
@@ -57,6 +59,7 @@ const pageTitles: Record<string, string> = {
   '/indicadores': 'Indicadores Financeiros',
   '/lfg-intelligence': 'LFG Intelligence',
   '/banco-implantes': 'Banco de Implantes',
+  '/financeiro': 'Financeiro',
   '/tabela-precos': 'Tabela de Preços',
   '/configuracoes': 'Configurações',
 }

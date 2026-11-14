@@ -22,6 +22,7 @@ import LfgIntelligence from './pages/LfgIntelligence'
 import BancoImplantes from './pages/BancoImplantes'
 import Configuracoes from './pages/Configuracoes'
 import TabelaPrecos from './pages/TabelaPrecos'
+import Financial from './pages/Financial'
 
 const App = () => (
   <BrowserRouter>
@@ -47,6 +48,7 @@ const App = () => (
               <Route path="/lfg-intelligence" element={<LfgIntelligence />} />
               <Route path="/banco-implantes" element={<BancoImplantes />} />
               <Route path="/tabela-precos" element={<TabelaPrecos />} />
+              <Route path="/financeiro" element={<Financial />} />
               <Route path="/configuracoes" element={<Configuracoes />} />
             </Route>
           </Route>
