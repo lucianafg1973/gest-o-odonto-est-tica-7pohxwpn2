@@ -29,19 +29,30 @@ interface PlanPrintModalProps {
   onOpenChange: (open: boolean) => void
   snapshot: PlanDocSnapshot
   emitidoPor?: string
-  /** Gera e compartilha o PDF pelo WhatsApp (botão dedicado). */
-  onShareWhatsapp?: () => void
+  /** Só planos APROVADOS podem gerar aceite para assinatura — proposta em
+   * rascunho não tem aceite comercial. */
+  podeAssinar?: boolean
+  /** Abre a prévia já no modo assinatura (botão do plano aprovado). */
+  signatureMode?: boolean
 }
 
 /**
  * Prévia do documento A4 do planejamento (exatamente o que sai no PDF):
  * alternância detalhado/resumido, caixa independente "Ocultar todos os
- * valores" e impressão para assinatura (aceite).
+ * valores" e impressão para assinatura (aceite) — este só existe quando o
+ * planejamento já foi aprovado (podeAssinar).
  */
-export function PlanPrintModal({ open, onOpenChange, snapshot, emitidoPor }: PlanPrintModalProps) {
+export function PlanPrintModal({
+  open,
+  onOpenChange,
+  snapshot,
+  emitidoPor,
+  podeAssinar = false,
+  signatureMode = false,
+}: PlanPrintModalProps) {
   const [modo, setModo] = useState<DocModo>('detalhado')
   const [hideValues, setHideValues] = useState(false)
-  const [signature, setSignature] = useState(false)
+  const [signature, setSignature] = useState(podeAssinar && signatureMode)
 
   const opts: DocOptions = useMemo(
     () => ({ modo, hideValues, signature, emitidoPor, emitidoEm: new Date().toISOString() }),
@@ -106,16 +117,18 @@ export function PlanPrintModal({ open, onOpenChange, snapshot, emitidoPor }: Pla
               Ocultar todos os valores
             </Label>
           </div>
-          <div className="flex items-center gap-2">
-            <Checkbox
-              id="sig-mode"
-              checked={signature}
-              onCheckedChange={(v) => setSignature(v === true)}
-            />
-            <Label htmlFor="sig-mode" className="text-xs text-[#2D1B14] cursor-pointer">
-              Imprimir para assinatura (aceite)
-            </Label>
-          </div>
+          {podeAssinar && (
+            <div className="flex items-center gap-2">
+              <Checkbox
+                id="sig-mode"
+                checked={signature}
+                onCheckedChange={(v) => setSignature(v === true)}
+              />
+              <Label htmlFor="sig-mode" className="text-xs text-[#2D1B14] cursor-pointer">
+                Imprimir para assinatura (aceite)
+              </Label>
+            </div>
+          )}
           <span className="ml-auto text-[11px] text-[#6B4F42]">
             {hideValues
               ? 'Documento clínico, sem valores'

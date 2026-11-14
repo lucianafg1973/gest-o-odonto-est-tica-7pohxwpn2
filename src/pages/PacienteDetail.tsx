@@ -749,15 +749,26 @@ export default function PacienteDetail() {
           )}
         </div>
         {!aprovado && (
-          <Button
-            size="sm"
-            type="button"
-            className="bg-[#2E8B57] hover:bg-[#257047] text-white text-xs font-semibold"
-            onClick={() => handleApprovePlan(kind)}
-            disabled={approvingPlan}
-          >
-            <CheckCircle2 className="w-3.5 h-3.5 mr-1" /> Aprovar planejamento
-          </Button>
+          <>
+            {/* Proposta impressa SEM aprovar: o cliente leva o orçamento para pensar. */}
+            <Button
+              size="sm"
+              type="button"
+              className="btn-terracotta-gold text-xs font-semibold"
+              onClick={() => abrirPrintModal(kind)}
+            >
+              <Printer className="w-3.5 h-3.5 mr-1" /> Imprimir proposta
+            </Button>
+            <Button
+              size="sm"
+              type="button"
+              className="bg-[#2E8B57] hover:bg-[#257047] text-white text-xs font-semibold"
+              onClick={() => handleApprovePlan(kind)}
+              disabled={approvingPlan}
+            >
+              <CheckCircle2 className="w-3.5 h-3.5 mr-1" /> Aprovar planejamento
+            </Button>
+          </>
         )}
         {aprovado && (
           <Button
@@ -1183,6 +1194,23 @@ export default function PacienteDetail() {
         patient={patient}
         onSaved={loadAllData}
       />
+
+      {/* Prévia de impressão/PDF — proposta em rascunho (sem aceite) ou planejamento aprovado. */}
+      {(() => {
+        const plan = printKind === 'hof' ? activeHofPlan : activeDentalPlan
+        const snap = snapshotDoPlano(plan)
+        if (!printModalOpen || !snap) return null
+        return (
+          <PlanPrintModal
+            open={printModalOpen}
+            onOpenChange={setPrintModalOpen}
+            snapshot={snap}
+            emitidoPor={user?.name || '—'}
+            podeAssinar={plan?.approval_status === 'aprovado'}
+            signatureMode={printSignature}
+          />
+        )
+      })()}
     </div>
   )
 }
