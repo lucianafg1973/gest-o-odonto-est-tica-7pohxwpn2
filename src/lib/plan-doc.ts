@@ -5,7 +5,7 @@ import { formatCurrency } from '@/lib/price-calculation'
  * Motor de documento do planejamento (impressão / PDF / WhatsApp).
  * Os dados vêm SEMPRE do snapshot salvo no planejamento (virtual_plans) —
  * nunca da tabela de preços atual — garantindo que documentos já gerados
- * ou assinados não mudem quando a tabela mudar (T9/T12).
+ * ou assinados não mudam quando a tabela mudar (T9/T12).
  * Cálculos em centavos via lib/orcamento (protocolo global não soma duas vezes — T10).
  */
 
@@ -275,6 +275,47 @@ export function buildPlanDocLines(s: PlanDocSnapshot, o: DocOptions): string[] {
   return linhas
 }
 
+const DOC_CSS = `
+  @page { size: A4; margin: 16mm 14mm; }
+  * { box-sizing: border-box; }
+  body { font-family: Georgia, 'Times New Roman', serif; color: #2D1B14; margin: 0; background: #fff; }
+  .sheet { max-width: 186mm; margin: 0 auto; padding: 4mm; background: #FFFEFB; }
+  .head { display: flex; align-items: center; gap: 14px; border-bottom: 2px solid #C66B4D; padding-bottom: 10px; }
+  .head img { height: 52px; }
+  .logo-fallback { font-family: Georgia, serif; font-size: 15px; font-weight: bold; color: #8B6914; border: 1.5px solid #D4AF37; border-radius: 8px; padding: 6px 10px; }
+  .head-info { flex: 1; }
+  .head-info h1 { margin: 0; font-size: 16px; color: #2D1B14; }
+  .head-info p { margin: 2px 0 0; font-size: 11px; color: #6B4F42; }
+  .doc-title { text-align: center; font-size: 15px; letter-spacing: 1.5px; font-weight: bold; color: #7A3B25; margin: 16px 0 4px; }
+  .doc-status { text-align: center; font-size: 10.5px; color: #6B4F42; margin-bottom: 12px; }
+  .doc-status b { color: #2E8B57; }
+  .meta { width: 100%; border-collapse: collapse; font-size: 11.5px; margin-bottom: 14px; }
+  .meta td { padding: 3px 6px; border-bottom: 1px solid #EDE3D8; }
+  .meta td:first-child { color: #6B4F42; width: 120px; }
+  h2 { font-size: 12.5px; color: #7A3B25; text-transform: uppercase; letter-spacing: 0.8px; border-bottom: 1px solid #D4AF37; padding-bottom: 3px; margin: 16px 0 8px; }
+  table { width: 100%; border-collapse: collapse; font-size: 11px; }
+  th, td { border: 1px solid #EDE3D8; padding: 5px 7px; text-align: left; vertical-align: top; }
+  th { background: #FBF3DC; color: #2D1B14; font-size: 10px; text-transform: uppercase; }
+  .c { text-align: center; } .r { text-align: right; } .muted { color: #9a8f88; }
+  .tag-global, .tag-proto { display: inline-block; font-size: 8.5px; font-weight: bold; border-radius: 999px; padding: 0 6px; margin-left: 4px; }
+  .tag-global { background: #E8F5EE; color: #2E8B57; border: 1px solid #2E8B57; }
+  .tag-proto { background: #FBF3DC; color: #8B6914; border: 1px solid #D4AF37; }
+  table.fin { margin-top: 12px; width: 60%; margin-left: auto; }
+  table.fin td { border: none; border-bottom: 1px dotted #D4AF37; padding: 4px 6px; font-size: 12px; }
+  .total-row td { font-weight: bold; font-size: 14px; color: #7A3B25; border-bottom: 2px solid #C66B4D; }
+  .clinical-note { font-size: 11px; color: #6B4F42; background: #FBF3DC; border: 1px solid #D4AF37; border-radius: 6px; padding: 8px 10px; margin-top: 14px; }
+  .aceite { margin-top: 20px; page-break-inside: avoid; }
+  .declaracao { font-size: 11.5px; text-align: justify; line-height: 1.55; background: #FFFEFB; border: 1px solid #EDE3D8; border-left: 3px solid #C66B4D; padding: 10px 12px; }
+  .obs { font-size: 9.5px; color: #6B4F42; font-style: italic; }
+  .local-data { font-size: 11.5px; margin-top: 26px; }
+  .sigs { display: flex; justify-content: space-between; margin-top: 46px; page-break-inside: avoid; }
+  .sig { width: 44%; text-align: center; font-size: 11px; }
+  .sig .line { border-top: 1px solid #2D1B14; margin-bottom: 4px; }
+  .sig span { display: block; color: #6B4F42; font-size: 10px; }
+  .footer { margin-top: 24px; border-top: 1px solid #D4AF37; padding-top: 6px; font-size: 9px; color: #6B4F42; text-align: center; }
+  @media print { .sheet { padding: 0; } }
+`
+
 /** HTML A4 completo do documento — usado na prévia, impressão e PDF. */
 export function buildPlanDocHtml(s: PlanDocSnapshot, o: DocOptions): string {
   const clinic = getClinicConfig()
@@ -351,46 +392,7 @@ export function buildPlanDocHtml(s: PlanDocSnapshot, o: DocOptions): string {
 
   return `<!DOCTYPE html><html lang="pt-BR"><head><meta charset="utf-8"/>
 <title>${esc(tituloDoc(s, o.signature))}</title>
-<style>
-  @page { size: A4; margin: 16mm 14mm; }
-  * { box-sizing: border-box; }
-  body { font-family: Georgia, 'Times New Roman', serif; color: #2D1B14; margin: 0; background: #fff; }
-  .sheet { max-width: 186mm; margin: 0 auto; padding: 4mm; background: #FFFEFB; }
-  .head { display: flex; align-items: center; gap: 14px; border-bottom: 2px solid #C66B4D; padding-bottom: 10px; }
-  .head img { height: 52px; }
-  .logo-fallback { font-family: Georgia, serif; font-size: 15px; font-weight: bold; color: #8B6914; border: 1.5px solid #D4AF37; border-radius: 8px; padding: 6px 10px; }
-  .head-info { flex: 1; }
-  .head-info h1 { margin: 0; font-size: 16px; color: #2D1B14; }
-  .head-info p { margin: 2px 0 0; font-size: 11px; color: #6B4F42; }
-  .doc-title { text-align: center; font-size: 15px; letter-spacing: 1.5px; font-weight: bold; color: #7A3B25; margin: 16px 0 4px; }
-  .doc-status { text-align: center; font-size: 10.5px; color: #6B4F42; margin-bottom: 12px; }
-  .doc-status b { color: #2E8B57; }
-  .meta { width: 100%; border-collapse: collapse; font-size: 11.5px; margin-bottom: 14px; }
-  .meta td { padding: 3px 6px; border-bottom: 1px solid #EDE3D8; }
-  .meta td:first-child { color: #6B4F42; width: 120px; }
-  h2 { font-size: 12.5px; color: #7A3B25; text-transform: uppercase; letter-spacing: 0.8px; border-bottom: 1px solid #D4AF37; padding-bottom: 3px; margin: 16px 0 8px; }
-  table { width: 100%; border-collapse: collapse; font-size: 11px; }
-  th, td { border: 1px solid #EDE3D8; padding: 5px 7px; text-align: left; vertical-align: top; }
-  th { background: #FBF3DC; color: #2D1B14; font-size: 10px; text-transform: uppercase; }
-  .c { text-align: center; } .r { text-align: right; } .muted { color: #9a8f88; }
-  .tag-global, .tag-proto { display: inline-block; font-size: 8.5px; font-weight: bold; border-radius: 999px; padding: 0 6px; margin-left: 4px; }
-  .tag-global { background: #E8F5EE; color: #2E8B57; border: 1px solid #2E8B57; }
-  .tag-proto { background: #FBF3DC; color: #8B6914; border: 1px solid #D4AF37; }
-  table.fin { margin-top: 12px; width: 60%; margin-left: auto; }
-  table.fin td { border: none; border-bottom: 1px dotted #D4AF37; padding: 4px 6px; font-size: 12px; }
-  .total-row td { font-weight: bold; font-size: 14px; color: #7A3B25; border-bottom: 2px solid #C66B4D; }
-  .clinical-note { font-size: 11px; color: #6B4F42; background: #FBF3DC; border: 1px solid #D4AF37; border-radius: 6px; padding: 8px 10px; margin-top: 14px; }
-  .aceite { margin-top: 20px; page-break-inside: avoid; }
-  .declaracao { font-size: 11.5px; text-align: justify; line-height: 1.55; background: #FFFEFB; border: 1px solid #EDE3D8; border-left: 3px solid #C66B4D; padding: 10px 12px; }
-  .obs { font-size: 9.5px; color: #6B4F42; font-style: italic; }
-  .local-data { font-size: 11.5px; margin-top: 26px; }
-  .sigs { display: flex; justify-content: space-between; margin-top: 46px; page-break-inside: avoid; }
-  .sig { width: 44%; text-align: center; font-size: 11px; }
-  .sig .line { border-top: 1px solid #2D1B14; margin-bottom: 4px; }
-  .sig span { display: block; color: #6B4F42; font-size: 10px; }
-  .footer { margin-top: 24px; border-top: 1px solid #D4AF37; padding-top: 6px; font-size: 9px; color: #6B4F42; text-align: center; }
-  @media print { .sheet { padding: 0; } }
-</style></head><body><div class="sheet">
+<style>${DOC_CSS}</style></head><body><div class="sheet">
   <div class="head">
     ${logo}
     <div class="head-info">
@@ -414,4 +416,63 @@ export function buildPlanDocHtml(s: PlanDocSnapshot, o: DocOptions): string {
   ${assinatura}
   <div class="footer">${esc(clinic.name)} • Documento gerado pelo sistema de gestão — Nº ${esc(numeroPlanejamento(s.planId))} • Versão ${s.versao || 1}</div>
 </div></body></html>`
+}
+
+/** HTML puro (sem <html>/<head>) — embutido na prévia em iframe. */
+export function buildPlanDocBody(s: PlanDocSnapshot, o: DocOptions): string {
+  return buildPlanDocHtml(s, o)
+    .replace(/^[\s\S]*?<body>/, '')
+    .replace(/<\/body>[\s\S]*$/, '')
+}
+
+/** CSS do documento (mesma folha da prévia e do PDF final). */
+export const planDocCss = DOC_CSS
+
+/** Abre a janela de impressão nativa com o HTML A4 do documento. */
+export function printPlanDoc(s: PlanDocSnapshot, o: DocOptions) {
+  const html = buildPlanDocHtml(s, o)
+  const w = window.open('', '_blank', 'width=880,height=1000')
+  if (!w) {
+    alert('Permita janelas pop-up para visualizar/imprimir o documento.')
+    return
+  }
+  w.document.open()
+  w.document.write(html)
+  w.document.close()
+  w.focus()
+  setTimeout(() => {
+    try {
+      w.print()
+    } catch {
+      /* usuário pode imprimir manualmente pela janela aberta */
+    }
+  }, 350)
+}
+
+/** Blob do PDF (janela de impressão → "Salvar como PDF") — base do WhatsApp. */
+export async function planDocPdfBlob(s: PlanDocSnapshot, o: DocOptions): Promise<Blob | null> {
+  // Sem biblioteca de PDF no projeto: o PDF é gerado pelo próprio navegador
+  // (impressão → destino "Salvar como PDF"). O download do .html A4 é o
+  // fallback garantido quando não há como gerar o PDF direto.
+  const html = buildPlanDocHtml(s, o)
+  return new Blob([html], { type: 'text/html;charset=utf-8' })
+}
+
+/** Nome de arquivo seguro para o documento. */
+export function docFileName(s: PlanDocSnapshot, o: DocOptions) {
+  const tipo = o.signature ? 'aceite' : o.modo
+  return `${tituloDoc(s, o.signature).replace(/[^\w-]+/g, '_')}_${tipo}.html`
+}
+
+/** Baixa o arquivo do documento no navegador. */
+export function downloadPlanDoc(s: PlanDocSnapshot, o: DocOptions) {
+  const blob = new Blob([buildPlanDocHtml(s, o)], { type: 'text/html;charset=utf-8' })
+  const url = URL.createObjectURL(blob)
+  const a = document.createElement('a')
+  a.href = url
+  a.download = docFileName(s, o)
+  document.body.appendChild(a)
+  a.click()
+  a.remove()
+  setTimeout(() => URL.revokeObjectURL(url), 4000)
 }
