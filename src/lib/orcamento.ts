@@ -19,15 +19,12 @@ export const itemCents = (it: OrcamentoItem) =>
   Math.round((it.price || 0) * 100) * Math.max(1, it.quantity || 1)
 
 /**
- * Itens que entram no orçamento: não cancelados e não "incluídos no global"
- * (o valor global do protocolo já cobre esses itens).
+ * Itens que entram no orçamento: não cancelados e não marcados como
+ * "incluído no global" (o preço global do protocolo já cobre esses itens —
+ * Teste 3: o componente incluído NÃO pode ser cobrado de novo).
  */
 export function itensOrcamentaveis(items: OrcamentoItem[]): OrcamentoItem[] {
-  return items.filter(
-    (it) =>
-      it.status !== 'cancelado' &&
-      !(it.incluidoNoGlobal === true && it.modalidadePreco === 'global'),
-  )
+  return items.filter((it) => it.status !== 'cancelado' && it.incluidoNoGlobal !== true)
 }
 
 /** Total do orçamento em centavos. */
