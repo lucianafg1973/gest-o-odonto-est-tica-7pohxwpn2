@@ -2,6 +2,9 @@ import { useCallback, useEffect, useState } from 'react'
 import ClinicalHourSheet from '@/components/pricing/ClinicalHourSheet'
 import ProceduresPricingPage from '@/components/pricing/ProceduresPricingPage'
 import CampaignSimulator from '@/components/pricing/CampaignSimulator'
+import { CustosFixosSheet, DerivacaoHoraClinica } from '@/components/pricing/CustosFixosSheet'
+import { LucratividadeSheet, PlanilhaInteligente } from '@/components/pricing/LucratividadeSheet'
+import { updateClinicalHourConfig } from '@/services/clinical-hour'
 import { Card, CardContent } from '@/components/ui/card'
 import { formatCurrency } from '@/lib/price-calculation'
 import {
@@ -19,14 +22,23 @@ import {
   Stethoscope,
   TrendingUp,
   Megaphone,
+  Calculator,
 } from 'lucide-react'
 
-type Secao = 'visao' | 'movimentos' | 'hora' | 'procedimentos' | 'campanhas' | 'indicadores'
+type Secao =
+  | 'visao'
+  | 'movimentos'
+  | 'hora'
+  | 'precificacao'
+  | 'procedimentos'
+  | 'campanhas'
+  | 'indicadores'
 
 const MENU: { key: Secao; label: string; icon: typeof Clock }[] = [
   { key: 'visao', label: 'Visão Geral Financeira', icon: LayoutDashboard },
   { key: 'movimentos', label: 'Receitas e Despesas', icon: ArrowLeftRight },
   { key: 'hora', label: 'Formação da Hora Clínica', icon: Clock },
+  { key: 'precificacao', label: 'Precificação', icon: Calculator },
   { key: 'procedimentos', label: 'Procedimentos e Precificação', icon: Stethoscope },
   { key: 'campanhas', label: 'Simulador de Campanhas', icon: Megaphone },
   { key: 'indicadores', label: 'Indicadores de Lucratividade', icon: TrendingUp },
@@ -62,6 +74,25 @@ export default function Financial() {
   useEffect(() => {
     reload()
   }, [reload])
+
+  /** Salva parâmetros da hora clínica editados na aba Precificação. */
+  const salvarConfigHora = async (patch: {
+    available_hours?: number
+    idle_percent?: number
+    evaluation_extra_percent?: number
+  }) => {
+    if (!config) return
+    setConfig({ ...config, ...patch })
+    try {
+      await updateClinicalHourConfig(config.id, patch)
+    } catch {
+      /* mantém o valor otimista; recarregar restaura o banco */
+    }
+  }
+
+  /** Substitui um procedimento na lista local (edições da aba Precificação). */
+  const substituirProcedimento = (p: ProcedureRecord) =>
+    setProcedures((prev) => prev.map((x) => (x.id === p.id ? p : x)))
 
   const custosMensais = items
     .filter((i) => i.active !== false)
@@ -149,6 +180,36 @@ export default function Financial() {
       )}
 
       {secao === 'hora' && <ClinicalHourSheet items={items} config={config} onReload={reload} />}
+
+      {secao === 'precificacao' && (
+        <div className="space-y-4">
+          <p className="text-xs text-[#6B4F42]">
+            As duas planilhas que se completam: custos fixos → hora clínica → lucratividade por
+            procedimento, com sugestão de preço e desconto máximo para campanhas. Tudo editável e
+            salvo no banco.
+          </p>
+          <CustosFixosSheet items={items} onChange={setItems} />
+          <DerivacaoHoraClinica
+            custosMensais={custosMensais}
+            horasDisponiveis={config?.available_hours ?? 480}
+            ociosidade={config?.idle_percent ?? 20}
+            fatorAvaliacao={config?.evaluation_extra_percent ?? 0}
+            onHorasChange={(v) => salvarConfigHora({ available_hours: v })}
+            onOciosidadeChange={(v) => salvarConfigHora({ idle_percent: v })}
+            onFatorChange={(v) => salvarConfigHora({ evaluation_extra_percent: v })}
+          />
+          <LucratividadeSheet
+            procedures={procedures}
+            custoMinuto={calculo.minuteCost}
+            onProcedureUpdate={substituirProcedimento}
+          />
+          <PlanilhaInteligente
+            procedures={procedures}
+            custoMinuto={calculo.minuteCost}
+            onProcedureUpdate={substituirProcedimento}
+          />
+        </div>
+      )}
 
       {secao === 'procedimentos' && (
         <ProceduresPricingPage

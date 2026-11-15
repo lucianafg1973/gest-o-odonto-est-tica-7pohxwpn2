@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2026-11-15T21:43:42.231Z",
+  "generatedAt": "2026-11-15T22:16:07.932Z",
   "collections": [
     {
       "name": "users",
@@ -402,6 +402,12 @@
         {
           "name": "active",
           "type": "bool",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "default_percent",
+          "type": "number",
           "required": false,
           "system": false
         }

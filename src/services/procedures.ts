@@ -30,6 +30,8 @@ export interface ProcedureRecord {
   target_margin_percent?: number
   planned_discount_percent?: number
   max_discount_percent?: number
+  /** % de inadimplência da planilha "Situação Atual" (migração precificação) */
+  default_percent?: number
   import_batch?: string
   import_status?: string
   observations?: string
