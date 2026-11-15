@@ -42,6 +42,8 @@ import { Label } from '@/components/ui/label'
 import { toast } from '@/hooks/use-toast'
 import { useAuth } from '@/hooks/use-auth'
 import { hasActiveAppointmentAt, countTodayBirthdays } from '@/lib/agenda-status'
+import { categorizeAppointment, CATEGORY_STYLES } from '@/lib/appointment-category'
+import { cn } from '@/lib/utils'
 import { addMin, durationMinutes, DEFAULT_APPOINTMENT_DURATION } from '@/services/appointments'
 import { timeToMin } from '@/components/agenda/CalendarGrid'
 import { Minus } from 'lucide-react'
@@ -443,7 +445,10 @@ export default function Agenda() {
                 return (
                   <div
                     key={app.id}
-                    className="p-4 bg-[#FFFDF9] border border-[#EDE3D8] rounded-xl space-y-3 hover:shadow-md transition-shadow"
+                    className={cn(
+                      'p-4 bg-[#FFFDF9] border border-[#EDE3D8] rounded-xl space-y-3 hover:shadow-md transition-shadow',
+                      CATEGORY_STYLES[categorizeAppointment(app)].stripe,
+                    )}
                   >
                     <div className="flex justify-between items-start gap-2">
                       <div className="min-w-0">

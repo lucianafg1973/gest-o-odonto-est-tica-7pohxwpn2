@@ -4,7 +4,8 @@
  */
 import { useMemo } from 'react'
 import { Plus } from 'lucide-react'
-import { STATUS_LABELS, STATUS_STYLES, type AppointmentRecord } from '@/services/appointments'
+import { STATUS_LABELS, type AppointmentRecord } from '@/services/appointments'
+import { categorizeAppointment, CATEGORY_STYLES, CATEGORY_LABELS } from '@/lib/appointment-category'
 import { isSlotFree } from '@/lib/agenda-status'
 import { cn } from '@/lib/utils'
 
@@ -137,19 +138,25 @@ export default function MonthView({ cursor, appointments, today, onOpenDay, onCr
                   </div>
                   <div className="mt-0.5 space-y-0.5">
                     {c.active.slice(0, 3).map((a) => {
-                      const style = STATUS_STYLES[a.status] || STATUS_STYLES.agendado
+                      const cat = categorizeAppointment(a)
+                      const style = CATEGORY_STYLES[cat]
                       return (
                         <button
                           type="button"
                           key={a.id}
                           onClick={() => onOpenDay(c.iso)}
                           className={cn(
-                            'w-full text-left border rounded px-1 py-0.5 text-[9px] leading-tight truncate hover:shadow-sm',
+                            'w-full text-left border rounded px-1 py-0.5 text-[9px] leading-tight truncate hover:shadow-sm flex items-center gap-1',
                             style.chip,
                           )}
-                          title={`${a.expand?.patient?.name || 'Paciente'} — ${STATUS_LABELS[a.status]}`}
+                          title={`${a.expand?.patient?.name || 'Paciente'} — ${
+                            a.expand?.procedure?.name || 'Atendimento Geral'
+                          } — ${CATEGORY_LABELS[cat]} — Status: ${STATUS_LABELS[a.status]}`}
                         >
-                          {a.expand?.patient?.name || 'Paciente'} · {a.start_time}
+                          <span className={`w-1.5 h-1.5 rounded-full shrink-0 ${style.dot}`} />
+                          <span className="truncate">
+                            {a.expand?.patient?.name || 'Paciente'} · {a.start_time}
+                          </span>
                         </button>
                       )
                     })}

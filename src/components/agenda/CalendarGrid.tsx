@@ -28,6 +28,11 @@ import {
   type AppointmentStatus,
 } from '@/services/appointments'
 import { isSlotFree } from '@/lib/agenda-status'
+import {
+  CATEGORY_LABELS,
+  CATEGORY_STYLES,
+  type AppointmentCategory,
+} from '@/lib/appointment-category'
 import { cn } from '@/lib/utils'
 
 export type GridPeriod = 'day' | 'week' | 'month'
@@ -289,6 +294,19 @@ export default function CalendarGrid({
         <Button size="sm" variant="outline" onClick={openSettings} className="h-8 text-xs">
           <Settings2 className="w-3.5 h-3.5 mr-1" /> Expediente
         </Button>
+      </div>
+
+      {/* Legenda de cores por categoria de tratamento */}
+      <div className="flex flex-wrap items-center gap-x-3 gap-y-1 bg-white border border-[#EDE3D8] rounded-xl px-3 py-1.5 shadow-subtle">
+        <span className="text-[10px] font-semibold uppercase tracking-wide text-[#6B4F42]">
+          Categorias:
+        </span>
+        {(Object.keys(CATEGORY_LABELS) as AppointmentCategory[]).map((cat) => (
+          <span key={cat} className="flex items-center gap-1 text-[10px] text-[#6B4F42]">
+            <span className={`w-2.5 h-2.5 rounded-full shrink-0 ${CATEGORY_STYLES[cat].dot}`} />
+            {CATEGORY_LABELS[cat]}
+          </span>
+        ))}
       </div>
 
       {/* ============ VISÃO MÊS ============ */}
