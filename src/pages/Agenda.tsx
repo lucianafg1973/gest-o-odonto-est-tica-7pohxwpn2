@@ -42,6 +42,7 @@ import { Label } from '@/components/ui/label'
 import { toast } from '@/hooks/use-toast'
 import { useAuth } from '@/hooks/use-auth'
 import { hasActiveAppointmentAt, countTodayBirthdays } from '@/lib/agenda-status'
+import CalendarGrid from '@/components/agenda/CalendarGrid'
 import AppointmentStatusBadge from '@/components/agenda/AppointmentStatusBadge'
 import CancelDialog from '@/components/agenda/CancelDialog'
 import RescheduleDialog from '@/components/agenda/RescheduleDialog'
@@ -56,6 +57,13 @@ export default function Agenda() {
   const [professionals, setProfessionals] = useState<ProfessionalRecord[]>([])
   const [activeTab, setActiveTab] = useState<'calendar' | 'confirmados'>('calendar')
   const [openModal, setOpenModal] = useState(false)
+  const [viewMode, setViewMode] = useState<'grade' | 'lista'>('grade')
+  // pré-preenchimento vindo do clique num horário livre da grade
+  const [pendingSlot, setPendingSlot] = useState<{
+    date: string
+    time: string
+    professionalId: string
+  } | null>(null)
 
   const [selectedPatient, setSelectedPatient] = useState('')
   const [selectedProcedure, setSelectedProcedure] = useState('')
@@ -127,6 +135,7 @@ export default function Agenda() {
       })
       toast({ title: 'Consulta agendada!', description: 'Cadastrada com sucesso no sistema.' })
       setOpenModal(false)
+      setPendingSlot(null)
       loadData()
     } catch (_) {
       toast({ title: 'Erro ao agendar', variant: 'destructive' })
@@ -246,6 +255,18 @@ export default function Agenda() {
     }
   }
 
+  /** Clique num horário livre da grade: abre o formulário de nova consulta já preenchido. */
+  const handleCreateAt = (opts: { date: string; time: string; professionalId: string }) => {
+    setSelectedPatient('')
+    setSelectedProcedure('')
+    setSelectedProfessional(opts.professionalId || 'none')
+    setDate(opts.date)
+    setStartTime(opts.time)
+    setNotes('')
+    setPendingSlot(opts)
+    setOpenModal(true)
+  }
+
   const openWhatsAppReminder = async (app: AppointmentRecord) => {
     const patientName = app.expand?.patient?.name || 'Paciente'
     const phone = app.expand?.patient?.phone?.replace(/\D/g, '') || ''
@@ -313,9 +334,36 @@ export default function Agenda() {
               Central de Confirmados ({confirmadosList.length})
             </Button>
           </div>
+          {activeTab === 'calendar' && (
+            <div className="bg-[#FAF6F0] p-1 rounded-xl border border-[#EDE3D8] flex">
+              <Button
+                size="sm"
+                variant={viewMode === 'grade' ? 'default' : 'ghost'}
+                className={
+                  viewMode === 'grade' ? 'bg-[#C66B4D] text-white' : 'text-[#2D1B14] text-xs'
+                }
+                onClick={() => setViewMode('grade')}
+              >
+                Grade
+              </Button>
+              <Button
+                size="sm"
+                variant={viewMode === 'lista' ? 'default' : 'ghost'}
+                className={
+                  viewMode === 'lista' ? 'bg-[#C66B4D] text-white' : 'text-[#2D1B14] text-xs'
+                }
+                onClick={() => setViewMode('lista')}
+              >
+                Lista
+              </Button>
+            </div>
+          )}
           <Button
             className="btn-terracotta-gold text-xs font-semibold"
-            onClick={() => setOpenModal(true)}
+            onClick={() => {
+              setPendingSlot(null)
+              setOpenModal(true)
+            }}
           >
             <Plus className="w-4 h-4 mr-1" /> Nova Consulta
           </Button>
@@ -325,7 +373,17 @@ export default function Agenda() {
       {/* Indicadores de comparecimento — visível nas duas abas */}
       <AttendanceIndicatorsPanel appointments={appointments} professionals={professionalOptions} />
 
-      {activeTab === 'calendar' ? (
+      {activeTab === 'calendar' && viewMode === 'grade' ? (
+        <CalendarGrid
+          appointments={appointments}
+          professionals={professionalOptions}
+          onCreateAt={handleCreateAt}
+          onStatusSelect={handleStatusSelect}
+          onRequestCancel={(app, kind) => setCancelTarget({ app, kind })}
+          onReschedule={(app) => setRescheduleTarget(app)}
+          onWhatsApp={openWhatsAppReminder}
+        />
+      ) : activeTab === 'calendar' ? (
         <Card className="card-warm">
           <CardHeader className="border-b border-[#EDE3D8] pb-4 flex flex-row justify-between items-center">
             <CardTitle className="font-serif-title text-base text-[#2D1B14] flex items-center gap-2">
@@ -525,6 +583,7 @@ export default function Agenda() {
             </DialogTitle>
             <DialogDescription className="text-xs text-[#6B4F42]">
               Selecione o paciente e procedimento.
+              {pendingSlot && ' Pré-preenchido a partir do horário selecionado na grade.'}
             </DialogDescription>
           </DialogHeader>
 
