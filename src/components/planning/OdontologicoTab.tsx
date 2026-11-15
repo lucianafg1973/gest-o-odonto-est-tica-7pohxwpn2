@@ -34,6 +34,13 @@ import { createMedicalRecord } from '@/services/medical_records'
  *
  * Contador de lesões: cada tratamento ativo (não cancelado) do dente conta
  * como uma lesão marcada no odontograma (círculo vermelho).
+ *
+ * Layout (0.0.47): a partir de xl o painel é uma GRADE de duas colunas —
+ * odontograma à esquerda (sticky, confinado à própria coluna e com altura
+ * máxima = viewport) e "Tratamentos planejados + orçamento" à direita, sempre
+ * visíveis lado a lado. Antes (0.0.46) tudo ficava numa coluna única e o card
+ * sticky cobria a lista de tratamentos ao rolar em tela cheia. Abaixo de xl as
+ * cards empilham SEM sticky, para que nada cubra a lista.
  */
 
 interface Props {
@@ -115,9 +122,9 @@ export function OdontologicoTab({
   )
 
   return (
-    <div className="space-y-4">
+    <div className="grid grid-cols-1 items-start gap-4 xl:grid-cols-[minmax(0,5fr)_minmax(0,7fr)]">
       {/* ---------- Odontograma clínico ---------- */}
-      <Card className="card-warm p-4 space-y-3 lg:sticky lg:top-16 lg:z-10">
+      <Card className="card-warm p-4 space-y-3 self-start xl:sticky xl:top-16 xl:z-10 xl:max-h-[calc(100vh-6rem)] xl:overflow-y-auto">
         <div className="flex flex-wrap items-center justify-between gap-2">
           <CardHeader className="p-0 pb-1">
             <CardTitle className="font-serif-title text-base font-bold text-[#2D1B14]">
@@ -182,7 +189,7 @@ export function OdontologicoTab({
       />
 
       {/* ---------- Tratamentos e Orçamento ---------- */}
-      <Card className="card-warm p-4 space-y-3">
+      <Card className="card-warm p-4 space-y-3 min-w-0">
         <CardHeader className="p-0 pb-1">
           <CardTitle className="font-serif-title text-base font-bold text-[#2D1B14]">
             Tratamentos planejados e orçamento
