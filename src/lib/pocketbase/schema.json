@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2026-11-15T01:06:50.480Z",
+  "generatedAt": "2026-11-15T02:34:06.079Z",
   "collections": [
     {
       "name": "users",
@@ -170,6 +170,19 @@
           "required": false,
           "system": false,
           "collectionRef": "patients"
+        },
+        {
+          "name": "comm_pref",
+          "type": "select",
+          "required": false,
+          "system": false,
+          "selectValues": ["liberado", "bloqueado"]
+        },
+        {
+          "name": "comm_consent_at",
+          "type": "date",
+          "required": false,
+          "system": false
         }
       ],
       "indexes": ["CREATE INDEX idx_patients_name ON patients (name)"]
@@ -443,7 +456,17 @@
           "type": "select",
           "required": false,
           "system": false,
-          "selectValues": ["agendado", "confirmado", "concluido", "faltou", "cancelado"]
+          "selectValues": [
+            "agendado",
+            "confirmado",
+            "chegou",
+            "em_atendimento",
+            "concluido",
+            "faltou",
+            "desmarcado_clinica",
+            "desmarcado_paciente",
+            "remarcou"
+          ]
         },
         {
           "name": "notes",
@@ -471,6 +494,43 @@
           "required": false,
           "system": false,
           "collectionRef": "professionals"
+        },
+        {
+          "name": "status_changed_by",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "status_changed_at",
+          "type": "date",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "canceled_by",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "canceled_reason",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "rescheduled_from",
+          "type": "relation",
+          "required": false,
+          "system": false,
+          "collectionRef": "appointments"
+        },
+        {
+          "name": "reschedule_history",
+          "type": "json",
+          "required": false,
+          "system": false
         }
       ],
       "indexes": [
@@ -1648,6 +1708,82 @@
         }
       ],
       "indexes": ["CREATE INDEX idx_cost_items_period ON clinic_cost_items (period_month)"]
+    },
+    {
+      "name": "appointment_status_events",
+      "type": "base",
+      "apiRules": {
+        "list": "@request.auth.id != ''",
+        "view": "@request.auth.id != ''",
+        "create": "@request.auth.id != ''",
+        "update": "@request.auth.id != ''",
+        "delete": null
+      },
+      "fields": [
+        {
+          "name": "appointment",
+          "type": "relation",
+          "required": true,
+          "system": false,
+          "collectionRef": "appointments"
+        },
+        {
+          "name": "from_status",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "to_status",
+          "type": "text",
+          "required": true,
+          "system": false
+        },
+        {
+          "name": "changed_by",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "changed_by_user",
+          "type": "relation",
+          "required": false,
+          "system": false,
+          "collectionRef": "users"
+        },
+        {
+          "name": "reason",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "actor_kind",
+          "type": "select",
+          "required": false,
+          "system": false,
+          "selectValues": ["clinica", "paciente", "sistema"]
+        },
+        {
+          "name": "created",
+          "type": "autodate",
+          "required": false,
+          "system": false,
+          "autodateTriggers": ["onCreate"]
+        },
+        {
+          "name": "updated",
+          "type": "autodate",
+          "required": false,
+          "system": false,
+          "autodateTriggers": ["onCreate", "onUpdate"]
+        }
+      ],
+      "indexes": [
+        "CREATE INDEX idx_ase_appointment ON appointment_status_events (appointment)",
+        "CREATE INDEX idx_ase_created ON appointment_status_events (created)"
+      ]
     }
   ]
 }

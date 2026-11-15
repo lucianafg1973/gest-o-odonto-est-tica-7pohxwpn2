@@ -15,6 +15,10 @@ export interface PatientRecord {
   kinship?: string
   referred_by_name?: string
   gender?: 'feminino' | 'masculino' | 'outro' | 'nao_informado'
+  /** LGPD: preferência de comunicação — 'liberado' | 'bloqueado' */
+  comm_pref?: 'liberado' | 'bloqueado' | ''
+  /** Data (ISO) em que a autorização para mensagens comemorativas foi registrada */
+  comm_consent_at?: string
   referral_source?:
     | 'instagram'
     | 'google'
