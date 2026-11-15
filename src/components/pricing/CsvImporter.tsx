@@ -17,7 +17,7 @@ interface Props {
 }
 
 export default function CsvImporter({ rows, onCancel, onConfirm, publicando }: Props) {
-  const comPreco = rows.filter((r) => r.precoOficialInicialBrl != null).length
+  const comPreco = rows.filter((r) => r.precoPropostoBrl != null).length
   const semPreco = rows.length - comPreco
   const [pagina, setPagina] = useState(0)
   const porPagina = 15
@@ -68,8 +68,8 @@ export default function CsvImporter({ rows, onCancel, onConfirm, publicando }: P
                   <td className="p-2">{r.grupoBusca || '—'}</td>
                   <td className="p-2">{r.procedimentoOriginal}</td>
                   <td className="p-2 text-right">
-                    {r.precoOficialInicialBrl != null ? (
-                      formatCurrency(r.precoOficialInicialBrl)
+                    {r.precoPropostoBrl != null ? (
+                      formatCurrency(r.precoPropostoBrl)
                     ) : (
                       <Badge className="bg-amber-100 text-amber-800 text-[9px]">pendente</Badge>
                     )}
