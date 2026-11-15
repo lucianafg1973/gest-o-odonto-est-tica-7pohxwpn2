@@ -286,8 +286,12 @@ export default function PacienteDetail() {
     }
   }
 
-  // Persistência (debounce simples) dos planejamentos HOF e Odontológico
+  // Persistência (debounce ~1s) dos planejamentos HOF e Odontológico: agrupa as
+  // edições rápidas numa única gravação, evitando rajadas de requests que o
+  // servidor recusa com "Too Many Requests" (429).
   const saveTimer = useRef<Record<string, ReturnType<typeof setTimeout>>>({})
+  // Planos excluídos: o timer pendente NÃO tenta salvar plano que já não existe.
+  const deletedPlanIds = useRef<Set<string>>(new Set())
 
   const persistPlanning = (
     key: string,
@@ -299,6 +303,7 @@ export default function PacienteDetail() {
     if (!record || record.approval_status === 'aprovado') return
     if (saveTimer.current[key]) clearTimeout(saveTimer.current[key])
     saveTimer.current[key] = setTimeout(() => {
+      if (deletedPlanIds.current.has(record.id)) return
       savePlanningState(record, {
         // O spread preserva os campos extras do Tratamento (status, execução,
         // protocolos/implantes, condições de pagamento…) no JSON do plano.
@@ -330,7 +335,7 @@ export default function PacienteDetail() {
         .catch(() => {
           /* silencioso — o usuário continua editando; estado local preservado */
         })
-    }, 600)
+    }, 1000)
   }
 
   useEffect(() => {
@@ -405,6 +410,9 @@ export default function PacienteDetail() {
     setDeletingPlan(true)
     try {
       await deleteVirtualPlan(plan.id)
+      // Timer pendente não pode tentar salvar o plano recém-excluído (404/429).
+      deletedPlanIds.current.add(plan.id)
+      for (const k of Object.keys(saveTimer.current)) clearTimeout(saveTimer.current[k])
       setPlans((prev) => prev.filter((p) => p.id !== plan.id))
       // Se o planejamento excluído estava aberto no editor, fecha o editor.
       if (activeHofPlan?.id === plan.id) setActiveHofPlan(null)

@@ -16,13 +16,16 @@ migrate(
         { name: 'dow', type: 'number', required: false, min: 0, max: 6, onlyInt: true },
         { name: 'start_time', type: 'text', required: true },
         { name: 'end_time', type: 'text', required: true },
+        { name: 'created', type: 'autodate', onCreate: true, onUpdate: false },
+        { name: 'updated', type: 'autodate', onCreate: true, onUpdate: true },
       ],
+      indexes: ['CREATE UNIQUE INDEX idx_work_schedule_dow ON work_schedule (dow)'],
     })
     app.save(collection)
 
     // Seed padrão 08:00–19:00 (idempotente — roda só quando não há linhas).
     const col = app.findCollectionByNameOrId('work_schedule')
-    const existing = $app.findRecordsByFilter('work_schedule', 'id != ""', 'dow', 1)
+    const existing = app.findRecordsByFilter('work_schedule', 'id != ""', 'dow', 10, 0)
     if (existing.length === 0) {
       const defaults = [
         { dow: 0, start_time: '08:00', end_time: '19:00' },
