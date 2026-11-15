@@ -17,6 +17,7 @@ import {
   getVirtualPlans,
   createNewPlan,
   updateVirtualPlan,
+  deleteVirtualPlan,
   savePlanningState,
   loadPlanningState,
   PlanKind,
@@ -192,6 +193,9 @@ export default function PacienteDetail() {
   const [printSignature, setPrintSignature] = useState(false)
   const [approveKind, setApproveKind] = useState<PlanKind | null>(null)
   const [attachKind, setAttachKind] = useState<PlanKind | null>(null)
+  /** Planejamento NÃO aprovado aguardando confirmação de exclusão. */
+  const [planToDelete, setPlanToDelete] = useState<VirtualPlanRecord | null>(null)
+  const [deletingPlan, setDeletingPlan] = useState(false)
 
   const [anamnesis, setAnamnesis] = useState('')
   const [diagnosis, setDiagnosis] = useState('')
@@ -387,6 +391,30 @@ export default function PacienteDetail() {
       toast({ title: 'Erro ao criar o planejamento', variant: 'destructive' })
     } finally {
       setCreatingPlan(null)
+    }
+  }
+
+  /**
+   * Exclui um planejamento NÃO aprovado (lixeira na lista): remove o registro
+   * em virtual_plans (os tratamentos vivem no JSON dele) e atualiza a lista
+   * sem recarregar a página. Aprovados nunca chegam aqui — o botão não existe.
+   */
+  const confirmDeletePlan = async () => {
+    const plan = planToDelete
+    if (!plan) return
+    setDeletingPlan(true)
+    try {
+      await deleteVirtualPlan(plan.id)
+      setPlans((prev) => prev.filter((p) => p.id !== plan.id))
+      // Se o planejamento excluído estava aberto no editor, fecha o editor.
+      if (activeHofPlan?.id === plan.id) setActiveHofPlan(null)
+      if (activeDentalPlan?.id === plan.id) setActiveDentalPlan(null)
+      toast({ title: 'Planejamento excluído.' })
+    } catch (_) {
+      toast({ title: 'Erro ao excluir o planejamento', variant: 'destructive' })
+    } finally {
+      setPlanToDelete(null)
+      setDeletingPlan(false)
     }
   }
 
@@ -1028,6 +1056,7 @@ export default function PacienteDetail() {
               onOpenPlan={openPlanInEditor}
               onNewPlan={() => handleNewPlan('hof')}
               creating={creatingPlan === 'hof'}
+              onDeletePlan={(p) => setPlanToDelete(p)}
             />
             {activeHofPlan ? (
               <>
@@ -1076,6 +1105,7 @@ export default function PacienteDetail() {
               onOpenPlan={openPlanInEditor}
               onNewPlan={() => handleNewPlan('odontologico')}
               creating={creatingPlan === 'odontologico'}
+              onDeletePlan={(p) => setPlanToDelete(p)}
             />
             {activeDentalPlan ? (
               <>
@@ -1178,6 +1208,41 @@ export default function PacienteDetail() {
               onClick={confirmDeleteImage}
             >
               Sim, excluir foto
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      {/* Confirmação de exclusão de planejamento NÃO aprovado (lixeira). */}
+      <AlertDialog
+        open={!!planToDelete}
+        onOpenChange={(o) => {
+          if (!o) setPlanToDelete(null)
+        }}
+      >
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle className="font-serif-title text-[#2D1B14]">
+              Excluir este planejamento?
+            </AlertDialogTitle>
+            <AlertDialogDescription className="text-xs text-[#6B4F42]">
+              O planejamento &quot;{planToDelete?.title}&quot; e todos os seus tratamentos serão
+              removidos definitivamente. Esta ação não pode ser desfeita.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel className="text-xs" disabled={deletingPlan}>
+              Cancelar
+            </AlertDialogCancel>
+            <AlertDialogAction
+              className="bg-red-600 hover:bg-red-700 text-white text-xs"
+              disabled={deletingPlan}
+              onClick={(e) => {
+                e.preventDefault()
+                confirmDeletePlan()
+              }}
+            >
+              {deletingPlan ? 'Excluindo...' : 'Sim, excluir planejamento'}
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>

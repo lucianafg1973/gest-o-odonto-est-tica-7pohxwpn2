@@ -1,7 +1,7 @@
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Card } from '@/components/ui/card'
-import { Clock, FileText, History, Lock, Plus, Printer } from 'lucide-react'
+import { Clock, FileText, History, Lock, Plus, Printer, Trash2 } from 'lucide-react'
 import { formatCurrency } from '@/lib/price-calculation'
 import { PlanKind, VirtualPlanRecord } from '@/services/virtual_plans'
 
@@ -25,6 +25,8 @@ interface Props {
   onOpenPlan: (plan: VirtualPlanRecord) => void
   onNewPlan: () => void
   creating?: boolean
+  /** Excluir um planejamento NÃO aprovado (ícone de lixeira). */
+  onDeletePlan?: (plan: VirtualPlanRecord) => void
 }
 
 /**
@@ -40,6 +42,7 @@ export function PlanListBar({
   onOpenPlan,
   onNewPlan,
   creating = false,
+  onDeletePlan,
 }: Props) {
   const doTipo = plans.filter((p) => (p.kind || 'hof') === kind)
 
@@ -113,6 +116,26 @@ export function PlanListBar({
                 <span className="text-[11px] font-bold text-[#C66B4D]">
                   {formatCurrency(total)}
                 </span>
+                {!aprovado && onDeletePlan && (
+                  <span
+                    role="button"
+                    tabIndex={0}
+                    className="ml-1 p-1 rounded-md hover:bg-[#FBE8E4] text-[#A34A2E] shrink-0 cursor-pointer"
+                    title="Excluir planejamento"
+                    onClick={(e) => {
+                      e.stopPropagation()
+                      onDeletePlan(p)
+                    }}
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter' || e.key === ' ') {
+                        e.stopPropagation()
+                        onDeletePlan(p)
+                      }
+                    }}
+                  >
+                    <Trash2 className="w-3.5 h-3.5" />
+                  </span>
+                )}
               </button>
             )
           })}

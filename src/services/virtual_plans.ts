@@ -68,6 +68,9 @@ export const createVirtualPlan = (data: Partial<VirtualPlanRecord>) =>
 export const updateVirtualPlan = (id: string, data: Partial<VirtualPlanRecord>) =>
   pb.collection('virtual_plans').update<VirtualPlanRecord>(id, data)
 
+/** Exclui definitivamente um planejamento (e seus tratamentos, que vivem no JSON dele). */
+export const deleteVirtualPlan = (id: string) => pb.collection('virtual_plans').delete(id)
+
 /** Data ISO (yyyy-mm-dd) usada na ordenação da lista de planejamentos. */
 const todayISO = () => new Date().toISOString().slice(0, 10)
 

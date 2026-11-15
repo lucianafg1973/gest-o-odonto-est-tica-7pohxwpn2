@@ -1,29 +1,13 @@
 import { useMemo, useState } from 'react'
-/* eslint-disable @typescript-eslint/no-unused-vars */
 import { Card, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
-import { Label } from '@/components/ui/label'
 import { Badge } from '@/components/ui/badge'
-import {
-  Dialog,
-  DialogContent,
-  DialogHeader,
-  DialogTitle,
-  DialogDescription,
-} from '@/components/ui/dialog'
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from '@/components/ui/select'
-import { Plus, Pencil, CheckCircle2, Ban, RotateCcw, Trash2, Lock } from 'lucide-react'
+import { Pencil, CheckCircle2, Ban, RotateCcw, Trash2, Lock, MousePointerClick } from 'lucide-react'
 import { ProcedureRecord } from '@/services/procedures'
 import { formatCurrency } from '@/lib/price-calculation'
 import type { Tratamento } from '@/lib/plan-types'
-import { STATUS_LABEL, STATUS_COR, tratamentoFromProcedure } from '@/lib/plan-types'
+import { STATUS_LABEL, STATUS_COR } from '@/lib/plan-types'
 import {
   orcamentoCents,
   orcamentoTotal,
@@ -32,15 +16,16 @@ import {
 } from '@/lib/orcamento'
 import { OdontogramaClinico, ToothVisual } from '@/components/planning/OdontogramaClinico'
 import { TratamentoDialog } from '@/components/planning/TratamentoDialog'
-import { AddProcedureFlow, abrevFaces } from '@/components/planning/AddProcedureFlow'
+import { DenteDialog, abrevFaces } from '@/components/planning/DenteDialog'
 import { createMedicalRecord } from '@/services/medical_records'
 
 /**
- * Aba "Planejamento Odontológico" — conecta o odontograma anatômico
- * (OdontogramaClinico) ao diálogo de tratamento (TratamentoDialog), à lista/
- * orçamento em centavos (lib/orcamento) e ao painel de implantes/protocolos
- * (ImplantPanel — renderizado em outro módulo). Vários tratamentos por dente coexistem; o total alimenta
- * as condições de pagamento (PaymentInfo) no componente pai.
+ * Aba "Planejamento Odontológico" — fluxo simplificado (0.0.46): HÁ UM
+ * odontograma clínico (OdontogramaClinico, sempre visível e inteiro) e o CLIQUE
+ * NO DENTE é o único caminho para planejar: abre o DenteDialog com busca de
+ * procedimento (1ª letra), faces, profissional executor, valor editável e
+ * observações. Vários tratamentos por dente coexistem; o total alimenta as
+ * condições de pagamento (PaymentInfo) no componente pai.
  *
  * O sistema de CONDIÇÕES PRÉ-EXISTENTES (cárie, restauração, coroa…) foi
  * removido a pedido da equipe clínica — o odontograma continua existindo e
@@ -77,16 +62,10 @@ export function OdontologicoTab({
   patientId,
 }: Props) {
   const [denticao, setDenticao] = useState<'permanente' | 'decidua'>('permanente')
-  const [selecionados, setSelecionados] = useState<number[]>([])
-  const [facesSelecionadas, setFacesSelecionadas] = useState<string[]>([])
   const [denteAberto, setDenteAberto] = useState<number | null>(null)
-  const [novoProcId, setNovoProcId] = useState('')
   const [editando, setEditando] = useState<{ t: Tratamento; modo: 'editar' | 'concluir' } | null>(
     null,
   )
-  /** Novo fluxo "Adicionar procedimento": odontograma + tabela completa. */
-  const [flowOpen, setFlowOpen] = useState(false)
-  const [flowDenteInicial, setFlowDenteInicial] = useState<string | null>(null)
 
   /** Estado visual de cada dente a partir dos tratamentos planejados. */
   const visual = useMemo(() => {
@@ -102,47 +81,17 @@ export function OdontologicoTab({
     return map
   }, [tratamentos])
 
-  const onToothClick = (n: number, mult: boolean) => {
+  /** Clique no dente = único caminho: abre o diálogo do dente direto. */
+  const onToothClick = (n: number) => {
     if (locked) return
-    if (mult) {
-      setSelecionados((prev) => (prev.includes(n) ? prev.filter((x) => x !== n) : [...prev, n]))
-      return
-    }
-    setSelecionados([n])
     setDenteAberto(n)
-  }
-
-  const onFaceClick = (dente: number, face: string) => {
-    if (locked) return
-    const key = `${dente}:${face}`
-    setFacesSelecionadas((prev) =>
-      prev.includes(key) ? prev.filter((x) => x !== key) : [...prev, key],
-    )
   }
 
   /* ---------- diálogo do dente ---------- */
   const denteItems =
     denteAberto != null ? tratamentos.filter((t) => String(t.tooth) === String(denteAberto)) : []
-  const denteFaces =
-    denteAberto != null
-      ? facesSelecionadas.filter((f) => f.startsWith(`${denteAberto}:`)).map((f) => f.split(':')[1])
-      : []
-  const denteSubtotal = denteItems
-    .filter((t) => t.status !== 'cancelado')
-    .reduce((s, t) => s + (t.price || 0) * (t.quantity || 1), 0)
 
-  const addTratamento = () => {
-    if (denteAberto == null) return
-    const proc = procedures.find((p) => p.id === novoProcId) || procedures[0]
-    if (!proc) return
-    const t = tratamentoFromProcedure(proc, {
-      tooth: String(denteAberto),
-      region: String(denteAberto),
-      faces: denteFaces,
-    })
-    onChange([...tratamentos, t])
-    setNovoProcId('')
-  }
+  const addTratamento = (t: Tratamento) => onChange([...tratamentos, t])
 
   const updateTratamento = (t: Tratamento) =>
     onChange(tratamentos.map((x) => (x.id === t.id ? t : x)))
@@ -155,19 +104,6 @@ export function OdontologicoTab({
   const editarCampo = (id: string, patch: Partial<Tratamento>) =>
     onChange(tratamentos.map((x) => (x.id === id ? { ...x, ...patch } : x)))
 
-  /**
-   * Novo fluxo "Adicionar procedimento": painel com odontograma interativo
-   * (seleção do dente) + tabela completa de procedimentos (faces, valor
-   * editável, vários tratamentos acumulados no mesmo dente). Confirmado,
-   * cada item vira um registro INDIVIDUAL na lista do planejamento — nada é
-   * sobrescrito. Procedimentos de arcada/região/global vão sem dente (faces []).
-   */
-  const abrirFlow = (dente: number | null) => {
-    setFlowDenteInicial(dente != null ? String(dente) : null)
-    setFlowOpen(true)
-  }
-
-  const addViaFlow = (novos: Tratamento[]) => onChange([...tratamentos, ...novos])
   /* ---------- orçamento (centavos) ---------- */
   const orcCents = orcamentoCents(tratamentos)
   const descontoC = Math.min(orcCents, Math.max(0, Math.round((desconto || 0) * 100)))
@@ -194,12 +130,13 @@ export function OdontologicoTab({
             </Badge>
           )}
         </div>
-        <p className="text-[11px] text-[#6B4F42]">
-          Clique em um dente para gerenciar seus tratamentos (canal, pino, restauração… — vários por
-          dente).
+        <p className="text-[11px] text-[#6B4F42] flex items-center gap-1.5">
+          <MousePointerClick className="w-3.5 h-3.5 text-[#C66B4D]" />
+          Clique em um dente para adicionar procedimento, faces, profissional, valor e observações
+          (vários por dente).
         </p>
 
-        {/* Dentição + modo */}
+        {/* Dentição */}
         <div className="flex flex-wrap items-center gap-2">
           <div className="flex rounded-xl border border-[#EDE3D8] overflow-hidden">
             {(['permanente', 'decidua'] as const).map((d) => (
@@ -216,33 +153,33 @@ export function OdontologicoTab({
               </button>
             ))}
           </div>
-          {(selecionados.length > 0 || facesSelecionadas.length > 0) && !locked && (
-            <Button
-              type="button"
-              size="sm"
-              variant="ghost"
-              className="text-[11px] h-8 text-[#6B4F42]"
-              onClick={() => {
-                setSelecionados([])
-                setFacesSelecionadas([])
-              }}
-            >
-              Limpar seleção
-            </Button>
-          )}
         </div>
 
         <OdontogramaClinico
           visual={visual}
-          selecionados={selecionados}
-          facesSelecionadas={facesSelecionadas}
+          selecionados={denteAberto != null ? [denteAberto] : []}
+          facesSelecionadas={[]}
           modo="dente"
-          onToothClick={onToothClick}
-          onFaceClick={(dente, face, _m) => onFaceClick(dente, face)}
+          onToothClick={(n) => onToothClick(n)}
+          onFaceClick={() => {}}
           denticao={denticao}
           locked={locked}
         />
       </Card>
+
+      {/* ---------- Diálogo ÚNICO do dente ---------- */}
+      <DenteDialog
+        open={denteAberto != null}
+        dente={denteAberto}
+        procedures={procedures}
+        profissionais={professionals}
+        items={denteItems}
+        locked={locked}
+        onOpenChange={(o) => !o && setDenteAberto(null)}
+        onAdd={addTratamento}
+        onPriceChange={(id, price) => editarCampo(id, { price })}
+        onRemoveItem={remover}
+      />
 
       {/* ---------- Tratamentos e Orçamento ---------- */}
       <Card className="card-warm p-4 space-y-3">
@@ -258,16 +195,10 @@ export function OdontologicoTab({
           </p>
         )}
 
-        {!locked && (
-          <Button
-            type="button"
-            size="sm"
-            className="btn-terracotta-gold text-xs w-fit"
-            data-testid="btn-adicionar-procedimento"
-            onClick={() => abrirFlow(null)}
-          >
-            <Plus className="w-3.5 h-3.5 mr-1" /> Adicionar procedimento
-          </Button>
+        {tratamentos.length === 0 && (
+          <p className="text-[11px] text-[#6B4F42]">
+            Nenhum tratamento planejado ainda — clique no dente desejado no odontograma acima.
+          </p>
         )}
 
         {tratamentos.length > 0 && (
@@ -467,179 +398,6 @@ export function OdontologicoTab({
           </div>
         )}
       </Card>
-
-      {/* ---------- Diálogo do dente (múltiplos tratamentos) ---------- */}
-      <Dialog open={denteAberto != null} onOpenChange={(o) => !o && setDenteAberto(null)}>
-        <DialogContent className="max-w-md bg-white border-[#EDE3D8] max-h-[85vh] overflow-y-auto">
-          <DialogHeader>
-            <DialogTitle className="font-serif-title text-[#2D1B14]">
-              Dente {denteAberto}
-            </DialogTitle>
-            <DialogDescription className="text-xs text-[#6B4F42]">
-              Todos os tratamentos deste dente — adicione vários (canal + pino + coroa…), cada um
-              com preço editável. Nenhum sobrescreve o outro.
-            </DialogDescription>
-          </DialogHeader>
-
-          <div className="space-y-3">
-            <div className="flex gap-2 items-end">
-              <div className="flex-1 space-y-1">
-                <Label className="text-xs font-semibold">Tratamento da tabela</Label>
-                <Select value={novoProcId} disabled={locked} onValueChange={setNovoProcId}>
-                  <SelectTrigger className="w-full bg-white text-xs">
-                    <SelectValue placeholder="Selecione" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {procedures.map((p) => (
-                      <SelectItem key={p.id} value={p.id} className="text-xs">
-                        {p.name}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
-              <Button
-                type="button"
-                size="sm"
-                className="btn-terracotta-gold text-xs"
-                onClick={addTratamento}
-                disabled={locked || procedures.length === 0}
-              >
-                <Plus className="w-4 h-4 mr-1" /> Incluir
-              </Button>
-            </div>
-            <Button
-              type="button"
-              size="sm"
-              variant="outline"
-              disabled={locked}
-              className="w-full text-xs text-[#C66B4D] border-[#C66B4D]/40"
-              onClick={() => {
-                setDenteAberto(null)
-                abrirFlow(denteAberto)
-              }}
-            >
-              <Plus className="w-3.5 h-3.5 mr-1" /> Adicionar procedimento (odontograma + tabela)
-            </Button>
-
-            {denteItems.length === 0 && (
-              <p className="text-[11px] text-[#6B4F42]">Nenhum tratamento neste dente ainda.</p>
-            )}
-
-            <div className="space-y-2">
-              {denteItems.map((it) => (
-                <div
-                  key={it.id}
-                  className={`bg-[#FAF6F0] rounded-lg p-2 border border-[#EDE3D8] space-y-1.5 ${
-                    it.status === 'cancelado' ? 'opacity-50' : ''
-                  }`}
-                >
-                  <div className="flex items-center gap-2">
-                    <span className="text-xs font-semibold text-[#2D1B14] flex-1 min-w-0 truncate">
-                      {it.procedureName}
-                    </span>
-                    <Badge className={`text-[9px] border ${STATUS_COR[it.status || 'planejado']}`}>
-                      {STATUS_LABEL[it.status || 'planejado']}
-                    </Badge>
-                  </div>
-                  <div className="flex items-center gap-2">
-                    <Input
-                      type="number"
-                      min={0}
-                      step="0.01"
-                      value={it.price}
-                      disabled={locked}
-                      onChange={(e) => editarCampo(it.id, { price: Number(e.target.value) || 0 })}
-                      className="w-24 h-7 text-xs"
-                      title="Valor unitário"
-                    />
-                    <span className="text-[11px] text-[#6B4F42] flex-1">
-                      {formatCurrency((it.price || 0) * (it.quantity || 1))}
-                    </span>
-                    {!locked && (
-                      <>
-                        <Button
-                          size="sm"
-                          type="button"
-                          variant="ghost"
-                          className="h-7 w-7 p-0 text-[#C66B4D]"
-                          title="Editar"
-                          onClick={() => setEditando({ t: it, modo: 'editar' })}
-                        >
-                          <Pencil className="w-3.5 h-3.5" />
-                        </Button>
-                        {it.status !== 'executado' && it.status !== 'cancelado' && (
-                          <Button
-                            size="sm"
-                            type="button"
-                            variant="ghost"
-                            className="h-7 w-7 p-0 text-[#2E8B57]"
-                            title="Concluir"
-                            onClick={() => setEditando({ t: it, modo: 'concluir' })}
-                          >
-                            <CheckCircle2 className="w-3.5 h-3.5" />
-                          </Button>
-                        )}
-                        {it.status === 'cancelado' ? (
-                          <Button
-                            size="sm"
-                            type="button"
-                            variant="ghost"
-                            className="h-7 w-7 p-0 text-[#6B4F42]"
-                            title="Reativar"
-                            onClick={() => setStatus(it.id, 'planejado')}
-                          >
-                            <RotateCcw className="w-3.5 h-3.5" />
-                          </Button>
-                        ) : (
-                          <Button
-                            size="sm"
-                            type="button"
-                            variant="ghost"
-                            className="h-7 w-7 p-0 text-[#8B6914]"
-                            title="Cancelar"
-                            onClick={() => setStatus(it.id, 'cancelado')}
-                          >
-                            <Ban className="w-3.5 h-3.5" />
-                          </Button>
-                        )}
-                        <Button
-                          size="sm"
-                          type="button"
-                          variant="ghost"
-                          className="h-7 w-7 p-0 text-red-500"
-                          title="Excluir"
-                          onClick={() => remover(it.id)}
-                        >
-                          <Trash2 className="w-3.5 h-3.5" />
-                        </Button>
-                      </>
-                    )}
-                  </div>
-                </div>
-              ))}
-            </div>
-
-            {denteItems.length > 0 && (
-              <div className="flex justify-between items-center text-xs pt-2 border-t border-[#EDE3D8]">
-                <span className="text-[#6B4F42]">Subtotal do dente:</span>
-                <span className="font-bold text-[#C66B4D]">{formatCurrency(denteSubtotal)}</span>
-              </div>
-            )}
-          </div>
-        </DialogContent>
-      </Dialog>
-
-      {/* ---------- Novo fluxo: odontograma + tabela completa ---------- */}
-      <AddProcedureFlow
-        open={flowOpen}
-        procedures={procedures}
-        profissionais={professionals}
-        visual={visual}
-        denteInicial={flowDenteInicial}
-        onOpenChange={setFlowOpen}
-        onConfirm={addViaFlow}
-      />
 
       {/* ---------- Editar / Concluir um tratamento ---------- */}
       <TratamentoDialog
