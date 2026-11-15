@@ -263,6 +263,25 @@ export function DenteDialog({
               </div>
             </div>
 
+            {/* B) Busca pela 1ª letra — caminho PRINCIPAL (versão que a
+                proprietária aprovou): ao digitar a primeira letra as opções
+                já aparecem; com o campo vazio, mostra a tabela ativa. */}
+            {!modoCascata && !carregando && (
+              <div className="relative">
+                <Search className="w-3.5 h-3.5 absolute left-2.5 top-1/2 -translate-y-1/2 text-[#6B4F42]" />
+                <Input
+                  value={busca}
+                  onChange={(e) => {
+                    const v = e.target.value
+                    setBusca(v)
+                    setBuscaSemAcento(v.normalize('NFD').replace(/[\u0300-\u036f]/g, ''))
+                  }}
+                  placeholder="Pesquisar por nome, código ou família…"
+                  className="pl-8 bg-white border-[#EDE3D8] text-xs h-8"
+                />
+              </div>
+            )}
+
             {/* A) Cascata Especialidade → Família → Procedimentos */}
             {modoCascata ? (
               <div className="max-h-52 overflow-y-auto border border-[#EDE3D8] rounded-lg divide-y divide-[#F5EEE6]">
@@ -356,7 +375,7 @@ export function DenteDialog({
             ) : lista.length === 0 ? (
               <p className="text-[11px] text-amber-800 bg-amber-50 border border-amber-200 rounded-lg p-2">
                 {ativos.length === 0
-                  ? 'A tabela de procedimentos está vazia ou sem itens ativos — importe o CSV em Financeiro → Precificação.'
+                  ? 'A tabela de procedimentos está vazia ou sem itens ativos — importe o CSV em Financeiro → Procedimentos e Precificação.'
                   : `Nenhum procedimento encontrado para “${busca}”.`}
               </p>
             ) : (
