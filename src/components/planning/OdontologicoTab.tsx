@@ -3,7 +3,16 @@ import { Card, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Badge } from '@/components/ui/badge'
-import { Pencil, CheckCircle2, Ban, RotateCcw, Trash2, Lock, MousePointerClick } from 'lucide-react'
+import {
+  Pencil,
+  CheckCircle2,
+  Ban,
+  RotateCcw,
+  Trash2,
+  Lock,
+  MousePointerClick,
+  Plus,
+} from 'lucide-react'
 import { ProcedureRecord } from '@/services/procedures'
 import { formatCurrency } from '@/lib/price-calculation'
 import type { Tratamento } from '@/lib/plan-types'
@@ -17,15 +26,21 @@ import {
 import { OdontogramaClinico, ToothVisual } from '@/components/planning/OdontogramaClinico'
 import { TratamentoDialog } from '@/components/planning/TratamentoDialog'
 import { DenteDialog, abrevFaces } from '@/components/planning/DenteDialog'
+import { AddProcedureFlow } from '@/components/planning/AddProcedureFlow'
 import { createMedicalRecord } from '@/services/medical_records'
 
 /**
- * Aba "Planejamento Odontológico" — fluxo simplificado (0.0.46): HÁ UM
- * odontograma clínico (OdontogramaClinico, sempre visível e inteiro) e o CLIQUE
- * NO DENTE é o único caminho para planejar: abre o DenteDialog com busca de
- * procedimento (1ª letra), faces, profissional executor, valor editável e
- * observações. Vários tratamentos por dente coexistem; o total alimenta as
- * condições de pagamento (PaymentInfo) no componente pai.
+ * Aba "Planejamento Odontológico" — HÁ UM odontograma clínico
+ * (OdontogramaClinico, sempre visível e inteiro) e DOIS caminhos para planejar
+ * (0.0.51, revertendo a 0.0.46 a pedido da proprietária):
+ * 1. o CLIQUE NO DENTE abre o DenteDialog com busca de procedimento (1ª letra),
+ *    cascata Especialidade→Família, faces, profissional executor, valor
+ *    editável e observações;
+ * 2. o botão "Adicionar procedimento" na barra do planejamento reabre o fluxo
+ *    antigo (AddProcedureFlow): odontograma de seleção + tabela completa com
+ *    busca, faces por linha, valor editável e acúmulo de vários tratamentos.
+ * Vários tratamentos por dente coexistem; o total alimenta as condições de
+ * pagamento (PaymentInfo) no componente pai.
  *
  * O sistema de CONDIÇÕES PRÉ-EXISTENTES (cárie, restauração, coroa…) foi
  * removido a pedido da equipe clínica — o odontograma continua existindo e
@@ -35,12 +50,18 @@ import { createMedicalRecord } from '@/services/medical_records'
  * Contador de lesões: cada tratamento ativo (não cancelado) do dente conta
  * como uma lesão marcada no odontograma (círculo vermelho).
  *
+ * Lixeira: a exclusão do planejamento INTEIRO (só em não aprovados) fica na
+ * PlanListBar; aqui a lixeira por linha remove o tratamento individual.
+ *
  * Layout (0.0.47): a partir de xl o painel é uma GRADE de duas colunas —
  * odontograma à esquerda (sticky, confinado à própria coluna e com altura
  * máxima = viewport) e "Tratamentos planejados + orçamento" à direita, sempre
- * visíveis lado a lado. Antes (0.0.46) tudo ficava numa coluna única e o card
- * sticky cobria a lista de tratamentos ao rolar em tela cheia. Abaixo de xl as
- * cards empilham SEM sticky, para que nada cubra a lista.
+ * visíveis lado a lado. Abaixo de xl as cards empilham SEM sticky, para que
+ * nada cubra a lista.
+ *
+ * O valor editado na tabela NÃO altera o catálogo (procedures) — fica só no
+ * tratamento do planejamento; o salvamento é automático com debounce + retry
+ * (PacienteDetail/virtual_plans).
  */
 
 interface Props {
@@ -70,6 +91,8 @@ export function OdontologicoTab({
 }: Props) {
   const [denticao, setDenticao] = useState<'permanente' | 'decidua'>('permanente')
   const [denteAberto, setDenteAberto] = useState<number | null>(null)
+  /** Painel antigo "Adicionar procedimento" (odontograma + tabela completa). */
+  const [fluxoAberto, setFluxoAberto] = useState(false)
   const [editando, setEditando] = useState<{ t: Tratamento; modo: 'editar' | 'concluir' } | null>(
     null,
   )
@@ -142,6 +165,17 @@ export function OdontologicoTab({
           Clique em um dente para adicionar procedimento, faces, profissional, valor e observações
           (vários por dente).
         </p>
+        <div className="flex flex-wrap items-center gap-2">
+          <Button
+            type="button"
+            size="sm"
+            className="btn-terracotta-gold text-xs font-semibold"
+            disabled={locked}
+            onClick={() => setFluxoAberto(true)}
+          >
+            <Plus className="w-3.5 h-3.5 mr-1" /> Adicionar procedimento
+          </Button>
+        </div>
 
         {/* Dentição */}
         <div className="flex flex-wrap items-center gap-2">
@@ -186,6 +220,17 @@ export function OdontologicoTab({
         onAdd={addTratamento}
         onPriceChange={(id, price) => editarCampo(id, { price })}
         onRemoveItem={remover}
+      />
+
+      {/* ---------- Painel antigo "Adicionar procedimento" (revertendo 0.0.46) ---------- */}
+      <AddProcedureFlow
+        open={fluxoAberto}
+        procedures={procedures}
+        profissionais={professionals}
+        visual={visual}
+        denteInicial={null}
+        onOpenChange={setFluxoAberto}
+        onConfirm={(novos) => onChange([...tratamentos, ...novos])}
       />
 
       {/* ---------- Tratamentos e Orçamento ---------- */}
