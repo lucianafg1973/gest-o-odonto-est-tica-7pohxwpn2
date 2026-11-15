@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { useRealtime } from '@/hooks/use-realtime'
 import {
   getAppointments,
@@ -42,7 +42,13 @@ import { Label } from '@/components/ui/label'
 import { toast } from '@/hooks/use-toast'
 import { useAuth } from '@/hooks/use-auth'
 import { hasActiveAppointmentAt, countTodayBirthdays } from '@/lib/agenda-status'
+import { addMin, durationMinutes, DEFAULT_APPOINTMENT_DURATION } from '@/services/appointments'
+import { timeToMin } from '@/components/agenda/CalendarGrid'
+import { Minus } from 'lucide-react'
 import CalendarGrid from '@/components/agenda/CalendarGrid'
+import AppointmentEditDialog, {
+  type AppointmentEditValues,
+} from '@/components/agenda/AppointmentEditDialog'
 import AppointmentStatusBadge from '@/components/agenda/AppointmentStatusBadge'
 import CancelDialog from '@/components/agenda/CancelDialog'
 import RescheduleDialog from '@/components/agenda/RescheduleDialog'
@@ -71,8 +77,10 @@ export default function Agenda() {
   const [date, setDate] = useState(new Date().toISOString().slice(0, 10))
   const [startTime, setStartTime] = useState('09:00')
   const [notes, setNotes] = useState('')
+  const [endTime, setEndTime] = useState('09:40')
 
   // dialogs
+  const [editTarget, setEditTarget] = useState<AppointmentRecord | null>(null)
   const [cancelTarget, setCancelTarget] = useState<{
     app: AppointmentRecord
     kind: 'clinica' | 'paciente'
@@ -130,6 +138,7 @@ export default function Agenda() {
         professional: selectedProfessional || undefined,
         date,
         start_time: startTime,
+        end_time: endTime || addMin(startTime, DEFAULT_APPOINTMENT_DURATION),
         status: 'agendado',
         notes,
       })
@@ -206,6 +215,7 @@ export default function Agenda() {
     const app = rescheduleTarget
     setRescheduleTarget(null)
     const nowIso = new Date().toISOString()
+    const originalDur = durationMinutes(app)
     const history = [
       ...(app.reschedule_history || []),
       {
@@ -221,6 +231,7 @@ export default function Agenda() {
       await updateAppointment(app.id, {
         date: newDate,
         start_time: newTime,
+        end_time: addMin(newTime, originalDur),
         status: 'remarcou',
         reschedule_history: history,
         status_changed_by: userName,
@@ -233,6 +244,7 @@ export default function Agenda() {
         professional: app.professional,
         date: newDate,
         start_time: newTime,
+        end_time: addMin(newTime, originalDur),
         status: 'agendado',
         notes: app.notes,
         rescheduled_from: app.id,
@@ -262,6 +274,7 @@ export default function Agenda() {
     setSelectedProfessional(opts.professionalId || 'none')
     setDate(opts.date)
     setStartTime(opts.time)
+    setEndTime(addMin(opts.time, DEFAULT_APPOINTMENT_DURATION))
     setNotes('')
     setPendingSlot(opts)
     setOpenModal(true)
@@ -285,6 +298,36 @@ export default function Agenda() {
       toast({ title: 'Lembrete enviado e registrado no prontuário!' })
     } catch {
       /* intentionally ignored */
+    }
+  }
+
+  /** Guarda o último estado conhecido do agendamento em edição (evita stale closure com realtime). */
+  const editConfirmRef = useRef<(id: string, v: AppointmentEditValues) => void>(() => {})
+  editConfirmRef.current = async (appId, values) => {
+    const fresh = appointments.find((a) => a.id === appId)
+    if (!fresh) {
+      toast({
+        title: 'Erro ao salvar alterações',
+        description: 'Agendamento não encontrado.',
+        variant: 'destructive',
+      })
+      return
+    }
+    try {
+      await updateAppointment(appId, {
+        patient: values.patient,
+        ...(values.procedure ? { procedure: values.procedure } : {}),
+        ...(values.professional ? { professional: values.professional } : {}),
+        date: values.date,
+        start_time: values.start_time,
+        end_time: values.end_time,
+        notes: values.notes,
+      })
+      toast({ title: 'Agendamento atualizado!' })
+      setEditTarget(null)
+      loadData()
+    } catch (_) {
+      toast({ title: 'Erro ao salvar alterações', variant: 'destructive' })
     }
   }
 
@@ -380,6 +423,7 @@ export default function Agenda() {
           onCreateAt={handleCreateAt}
           onStatusSelect={handleStatusSelect}
           onRequestCancel={(app, kind) => setCancelTarget({ app, kind })}
+          onEdit={(app) => setEditTarget(app)}
           onReschedule={(app) => setRescheduleTarget(app)}
           onWhatsApp={openWhatsAppReminder}
         />
@@ -551,6 +595,17 @@ export default function Agenda() {
         </Card>
       )}
 
+      <AppointmentEditDialog
+        open={!!editTarget}
+        onOpenChange={(o) => !o && setEditTarget(null)}
+        appointment={editTarget}
+        existingAppointments={appointments}
+        patients={patients}
+        procedures={procedures}
+        professionals={professionals}
+        onConfirm={(id, values) => editConfirmRef.current(id, values)}
+      />
+
       <CancelDialog
         open={!!cancelTarget}
         onOpenChange={(o) => !o && setCancelTarget(null)}
@@ -652,9 +707,55 @@ export default function Agenda() {
                 <Input
                   type="time"
                   value={startTime}
-                  onChange={(e) => setStartTime(e.target.value)}
+                  onChange={(e) => {
+                    const v = e.target.value
+                    setStartTime(v)
+                    if (v && timeToMin(endTime) <= timeToMin(v)) {
+                      setEndTime(addMin(v, DEFAULT_APPOINTMENT_DURATION))
+                    }
+                  }}
                   required
                 />
+              </div>
+            </div>
+
+            <div className="space-y-1">
+              <Label className="text-xs font-semibold">Horário de Fim</Label>
+              <Input type="time" value={endTime} onChange={(e) => setEndTime(e.target.value)} />
+              <div className="flex items-center gap-2">
+                <Button
+                  type="button"
+                  size="sm"
+                  variant="outline"
+                  className="h-7 w-7 p-0"
+                  onClick={() => {
+                    const dur = Math.max(30, timeToMin(endTime) - timeToMin(startTime) - 15)
+                    setEndTime(addMin(startTime, dur))
+                  }}
+                  title="Diminuir 15 minutos"
+                >
+                  <Minus className="w-3 h-3" />
+                </Button>
+                <span className="text-[11px] text-[#6B4F42]">
+                  Duração: {Math.max(0, timeToMin(endTime) - timeToMin(startTime))}min
+                </span>
+                <Button
+                  type="button"
+                  size="sm"
+                  variant="outline"
+                  className="h-7 w-7 p-0"
+                  onClick={() =>
+                    setEndTime(
+                      addMin(
+                        startTime,
+                        Math.max(30, timeToMin(endTime) - timeToMin(startTime) + 15),
+                      ),
+                    )
+                  }
+                  title="Aumentar 15 minutos"
+                >
+                  <Plus className="w-3 h-3" />
+                </Button>
               </div>
             </div>
 

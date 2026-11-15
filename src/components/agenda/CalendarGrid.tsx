@@ -4,6 +4,7 @@
  * - Semana: dias como colunas, agendamentos por hora
  * - Mês: delegado a MonthView
  * Nova VISUALIZAÇÃO da mesma agenda (coleção appointments) — não cria coleção nova.
+ * Expediente comercial vem da coleção `work_schedule` (banco), com fallback 08:00–19:00.
  */
 import { useEffect, useMemo, useState } from 'react'
 import { CalendarDays, ChevronLeft, ChevronRight, Settings2 } from 'lucide-react'
@@ -19,9 +20,10 @@ import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import AppointmentStatusBadge from '@/components/agenda/AppointmentStatusBadge'
 import MonthView from '@/components/agenda/MonthView'
+import { AppointmentChip, groupChips } from '@/components/agenda/CalendarGridChips'
+import { getWorkSchedule, saveWorkSchedule, DEFAULT_WORK_SCHEDULE } from '@/services/work_schedule'
 import {
   STATUS_LABELS,
-  STATUS_STYLES,
   type AppointmentRecord,
   type AppointmentStatus,
 } from '@/services/appointments'
@@ -100,6 +102,7 @@ interface Props {
   onStatusSelect: (app: AppointmentRecord, s: AppointmentStatus) => void
   onRequestCancel: (app: AppointmentRecord, kind: 'clinica' | 'paciente') => void
   onReschedule: (app: AppointmentRecord) => void
+  onEdit: (app: AppointmentRecord) => void
   onWhatsApp: (app: AppointmentRecord) => void
 }
 
@@ -112,6 +115,7 @@ export default function CalendarGrid({
   onStatusSelect,
   onRequestCancel,
   onReschedule,
+  onEdit,
   onWhatsApp,
 }: Props) {
   const today = new Date()
@@ -120,9 +124,12 @@ export default function CalendarGrid({
     const d = initialDate ? new Date(initialDate + 'T00:00:00') : new Date()
     return Number.isNaN(d.getTime()) ? new Date() : d
   })
-  const [workStart, setWorkStart] = useState(8 * 60) // 08:00
-  const [workEnd, setWorkEnd] = useState(19 * 60) // 19:00
+  // Expediente por dia da semana (0=dom … 6=sáb) — carregado do banco, fallback padrão.
+  const [schedule, setSchedule] = useState<Record<number, { start: number; end: number }>>(
+    () => DEFAULT_WORK_SCHEDULE,
+  )
   const [settingsOpen, setSettingsOpen] = useState(false)
+  const [settingsDow, setSettingsDow] = useState(1)
   const [settingsStart, setSettingsStart] = useState('08:00')
   const [settingsEnd, setSettingsEnd] = useState('19:00')
   const [detail, setDetail] = useState<AppointmentRecord | null>(null)
@@ -133,6 +140,20 @@ export default function CalendarGrid({
       if (!Number.isNaN(d.getTime())) setCursor(d)
     }
   }, [initialDate])
+
+  useEffect(() => {
+    let alive = true
+    getWorkSchedule()
+      .then((s) => {
+        if (alive) setSchedule(s)
+      })
+      .catch(() => {
+        /* fallback para o padrão já em useState */
+      })
+    return () => {
+      alive = false
+    }
+  }, [])
 
   const buckets = useMemo(() => {
     const map = new Map<string, AppointmentRecord[]>()
@@ -157,11 +178,28 @@ export default function CalendarGrid({
     return []
   }, [period, cursor])
 
+  // Expediente do(s) dia(s) em exibição: define as fileiras da grade.
+  const work = useMemo(() => {
+    if (period === 'week') {
+      let start = Infinity
+      let end = 0
+      for (const d of days) {
+        const s = schedule[d.getDay()] || DEFAULT_WORK_SCHEDULE[d.getDay()]
+        start = Math.min(start, s.start)
+        end = Math.max(end, s.end)
+      }
+      if (!Number.isFinite(start) || end <= start) return { start: 8 * 60, end: 19 * 60 }
+      return { start, end }
+    }
+    const s = schedule[cursor.getDay()] || DEFAULT_WORK_SCHEDULE[cursor.getDay()]
+    return { start: s.start, end: s.end }
+  }, [period, cursor, days, schedule])
+
   const slots = useMemo(() => {
     const out: number[] = []
-    for (let m = workStart; m < workEnd; m += SLOT_MIN) out.push(m)
+    for (let m = work.start; m < work.end; m += SLOT_MIN) out.push(m)
     return out
-  }, [workStart, workEnd])
+  }, [work])
 
   const shift = (n: number) => {
     if (period === 'day') setCursor((c) => addDays(c, n))
@@ -179,21 +217,29 @@ export default function CalendarGrid({
         : `${MONTH_NAMES[cursor.getMonth()]} ${cursor.getFullYear()}`
 
   const openSettings = () => {
-    setSettingsStart(minToTime(workStart))
-    setSettingsEnd(minToTime(workEnd))
+    const s = schedule[cursor.getDay()] || DEFAULT_WORK_SCHEDULE[cursor.getDay()]
+    setSettingsDow(cursor.getDay())
+    setSettingsStart(minToTime(s.start))
+    setSettingsEnd(minToTime(s.end))
     setSettingsOpen(true)
   }
 
-  const applySettings = () => {
+  const applySettings = async () => {
     const s = timeToMin(settingsStart)
     const e = timeToMin(settingsEnd)
     if (Number.isNaN(s) || Number.isNaN(e) || e <= s) {
       setSettingsOpen(false)
       return
     }
-    setWorkStart(s)
-    setWorkEnd(e)
+    // Otimista na UI; persiste no banco (coleção work_schedule).
+    setSchedule((prev) => ({ ...prev, [settingsDow]: { start: s, end: e } }))
     setSettingsOpen(false)
+    try {
+      const saved = await saveWorkSchedule(settingsDow, { start: s, end: e })
+      setSchedule((prev) => ({ ...prev, [settingsDow]: saved }))
+    } catch {
+      // sem persistência (ex.: sem permissão) — mantém o valor aplicado na sessão
+    }
   }
 
   /** Colunas de profissionais na visão dia — sempre pelo menos uma ("Sem profissional"). */
@@ -342,6 +388,9 @@ export default function CalendarGrid({
                                 time={time}
                                 professionalId={p.id}
                                 bucket={bucket}
+                                chips={groupChips(appointments, iso, p.id, slots, work.end).filter(
+                                  (g) => g.row === slots.indexOf(min),
+                                )}
                                 onCreateAt={onCreateAt}
                                 onOpenDetail={setDetail}
                               />
@@ -357,6 +406,9 @@ export default function CalendarGrid({
                                 time={time}
                                 professionalId=""
                                 bucket={bucket}
+                                chips={groupChips(appointments, diso, '', slots, work.end).filter(
+                                  (g) => g.row === slots.indexOf(min),
+                                )}
                                 onCreateAt={onCreateAt}
                                 onOpenDetail={setDetail}
                               />
@@ -387,7 +439,8 @@ export default function CalendarGrid({
                 </p>
                 <p>{detail.expand?.procedure?.name || 'Atendimento Geral'}</p>
                 <p>
-                  {(detail.date || '').slice(0, 10)} às {detail.start_time}
+                  {(detail.date || '').slice(0, 10)} das {detail.start_time}
+                  {detail.end_time ? ` às ${detail.end_time}` : ''}
                   {detail.expand?.professional?.name ? ` — ${detail.expand.professional.name}` : ''}
                 </p>
                 {detail.notes && <p className="whitespace-pre-wrap">{detail.notes}</p>}
@@ -410,6 +463,17 @@ export default function CalendarGrid({
                 </span>
               </div>
               <div className="flex justify-end gap-2 pt-2 border-t border-[#EDE3D8]">
+                <Button
+                  size="sm"
+                  variant="outline"
+                  className="text-xs"
+                  onClick={() => {
+                    onEdit(detail)
+                    setDetail(null)
+                  }}
+                >
+                  Editar
+                </Button>
                 <Button
                   size="sm"
                   variant="outline"
@@ -447,6 +511,7 @@ function SlotCell({
   time,
   professionalId,
   bucket,
+  chips,
   onCreateAt,
   onOpenDetail,
 }: {
@@ -454,16 +519,15 @@ function SlotCell({
   time: string
   professionalId: string
   bucket: AppointmentRecord[] | undefined
+  chips: { row: number; span: number; apps: AppointmentRecord[] }[]
   onCreateAt: (opts: { date: string; time: string; professionalId: string }) => void
   onOpenDetail: (app: AppointmentRecord) => void
 }) {
   const apps = bucket || []
-  const active = apps.filter((a) => !isSlotFree(a))
   const freed = apps.filter((a) => isSlotFree(a))
-  // Na visão de dia (coluna por profissional) a ocupação é avaliada POR COLUNA:
-  // agendamento de outro profissional não bloqueia esta coluna.
-  const filtered = professionalId ? active.filter((a) => a.professional === professionalId) : active
-  const clickable = filtered.length === 0
+  // A célula fica clicável quando NENHUM chip começa nela (chips longos ocupam
+  // várias fileiras, mas a célula de origem é a única que abre o "+ agendar").
+  const clickable = chips.length === 0
 
   return (
     <div
@@ -476,10 +540,12 @@ function SlotCell({
       }}
       title={clickable ? `${dateISO} ${time} — clique para agendar` : undefined}
     >
-      {filtered.map((app) => (
-        <AppointmentChip key={app.id} app={app} onOpenDetail={onOpenDetail} />
-      ))}
-      {filtered.length === 0 && freed.length > 0 && (
+      {chips.map((g) =>
+        g.apps.map((app) => (
+          <AppointmentChip key={app.id} app={app} span={g.span} onOpenDetail={onOpenDetail} />
+        )),
+      )}
+      {chips.length === 0 && freed.length > 0 && (
         <span className="text-[9px] text-[#6B4F42]/70 italic block leading-tight">
           livre ({freed.length === 1 ? 'horário liberado' : `${freed.length} liberados`})
         </span>
@@ -490,37 +556,5 @@ function SlotCell({
         </span>
       )}
     </div>
-  )
-}
-
-/** Chip compacto colorido por status; clique abre o detalhe (com badge seletor completo). */
-function AppointmentChip({
-  app,
-  onOpenDetail,
-}: {
-  app: AppointmentRecord
-  onOpenDetail: (app: AppointmentRecord) => void
-}) {
-  const style = STATUS_STYLES[app.status] || STATUS_STYLES.agendado
-  return (
-    <button
-      type="button"
-      className={cn(
-        'w-full text-left border rounded-md px-1.5 py-0.5 mb-0.5 truncate hover:shadow-sm transition-shadow',
-        style.chip,
-      )}
-      title={`${app.expand?.patient?.name || 'Paciente'} — ${STATUS_LABELS[app.status]}`}
-      onClick={(e) => {
-        e.stopPropagation()
-        onOpenDetail(app)
-      }}
-    >
-      <span className="block text-[10px] font-semibold leading-tight truncate">
-        {app.expand?.patient?.name || 'Paciente'}
-      </span>
-      <span className="block text-[9px] opacity-80 leading-tight truncate">
-        {app.expand?.procedure?.name || 'Atendimento Geral'}
-      </span>
-    </button>
   )
 }

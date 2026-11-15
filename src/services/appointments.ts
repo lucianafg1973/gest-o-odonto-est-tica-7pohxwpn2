@@ -124,6 +124,40 @@ export const getAppointments = (filter?: string) =>
 export const createAppointment = (data: Partial<AppointmentRecord>) =>
   pb.collection('appointments').create<AppointmentRecord>(data)
 
+/**
+ * Calcula o horário de fim a partir do início e da duração (minutos).
+ * Duração mínima = slot da grade (30 min); nunca fim ≤ início.
+ */
+export function computeEndTime(startTime: string, durationMin: number): string {
+  const [h, m] = (startTime || '09:00').split(':').map(Number)
+  const start = (h || 0) * 60 + (m || 0)
+  const dur = Math.max(30, Math.round(durationMin || 0))
+  const end = start + dur
+  return `${String(Math.floor(end / 60) % 24).padStart(2, '0')}:${String(end % 60).padStart(2, '0')}`
+}
+
+/** Duração padrão de uma consulta nova (minutos) quando o usuário não informa o fim. */
+export const DEFAULT_APPOINTMENT_DURATION = 40
+
+/** "09:20" + 40 → "10:00". Minutos podem ser negativos; o resultado fica em 00:00–23:59. */
+export function addMin(time: string, minutes: number): string {
+  const [h, m] = (time || '00:00').split(':').map(Number)
+  const total = ((h || 0) * 60 + (m || 0) + minutes) % 1440
+  const wrapped = (total + 1440) % 1440
+  return `${String(Math.floor(wrapped / 60)).padStart(2, '0')}:${String(wrapped % 60).padStart(2, '0')}`
+}
+
+/** Duração em minutos entre início e fim (fallback: 40 min quando o fim falta/é inválido). */
+export function durationMinutes(app: Pick<AppointmentRecord, 'start_time' | 'end_time'>): number {
+  if (!app.end_time) return 40
+  const toMin = (t: string) => {
+    const [h, m] = t.split(':').map(Number)
+    return (h || 0) * 60 + (m || 0)
+  }
+  const d = toMin(app.end_time) - toMin(app.start_time || '09:00')
+  return d > 0 ? d : 40
+}
+
 export const updateAppointment = (id: string, data: Partial<AppointmentRecord>) =>
   pb.collection('appointments').update<AppointmentRecord>(id, data)
 

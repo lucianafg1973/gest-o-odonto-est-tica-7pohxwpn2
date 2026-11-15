@@ -104,13 +104,38 @@ export const loadPlanningState = (plan: VirtualPlanRecord): PlanningState => ({
   annotations: typeof plan.annotations === 'string' ? plan.annotations : null,
 })
 
-/** Salva (debounce externo) os tratamentos e o plano de pagamento do plano. */
-export const savePlanningState = (
+/** Espera `ms` milissegundos (usado no backoff do 429). */
+const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms))
+
+/**
+ * Salva os tratamentos e o plano de pagamento do plano, com:
+ * - repetição automática quando o servidor recusa com "Too Many Requests" (429),
+ *   em backoff crescente (400ms → 800ms → 1,6s → 3,2s);
+ * - guard contra salvar um plano que acabou de ser excluído (404 é tratado como
+ *   "plano já não existe" e NÃO fica em loop de retry).
+ */
+export const savePlanningState = async (
   plan: VirtualPlanRecord,
   state: PlanningState,
-): Promise<VirtualPlanRecord> =>
-  updateVirtualPlan(plan.id, {
-    treatments: state.treatments,
-    payment_plan: state.paymentPlan,
-    ...(state.annotations !== undefined ? { annotations: state.annotations } : {}),
-  })
+): Promise<VirtualPlanRecord> => {
+  const maxAttempts = 4
+  let lastError: unknown
+  for (let attempt = 0; attempt < maxAttempts; attempt++) {
+    if (attempt > 0) await sleep(400 * Math.pow(2, attempt - 1))
+    try {
+      return await updateVirtualPlan(plan.id, {
+        treatments: state.treatments,
+        payment_plan: state.paymentPlan,
+        ...(state.annotations !== undefined ? { annotations: state.annotations } : {}),
+      })
+    } catch (err: any) {
+      lastError = err
+      const status = err?.status ?? err?.response?.status ?? err?.originalError?.status
+      // 404 = plano foi excluído enquanto isso → não adianta insistir.
+      if (status === 404) throw err
+      if (status === 429) continue // "Too Many Requests" → tenta de novo no backoff
+      throw err
+    }
+  }
+  throw lastError
+}
