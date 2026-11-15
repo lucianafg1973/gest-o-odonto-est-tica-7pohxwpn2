@@ -41,7 +41,7 @@ import { getProcedures } from '@/services/procedures'
 import { ProcedureRecord } from '@/services/procedures'
 import { formatCurrency } from '@/lib/price-calculation'
 
-import { OdontologicoTab, type Marcas } from '@/components/planning/OdontologicoTab'
+import { OdontologicoTab } from '@/components/planning/OdontologicoTab'
 import type { Tratamento } from '@/lib/plan-types'
 import { orcamentoCents } from '@/lib/orcamento'
 import { getProfessionals } from '@/services/professionals'
@@ -144,9 +144,13 @@ const mapDentalTratamentos = (recs: TreatmentItemRecord[] | null): Tratamento[] 
     }
   })
 
-/** Marcas clínicas + desconto da aba odontológica — persistidos em annotations. */
+/**
+ * Desconto da aba odontológica — persistido em annotations. As marcas de
+ * CONDIÇÕES PRÉ-EXISTENTES que antes viviam aqui foram removidas do sistema
+ * (0.0.45): conteúdo legado em planos antigos é simplesmente ignorado, sem
+ * migrar nem apagar registros.
+ */
 interface DentalNotas {
-  marcas: Marcas
   desconto: number
 }
 const parseDentalNotas = (raw: string | null | undefined): DentalNotas => {
@@ -154,13 +158,13 @@ const parseDentalNotas = (raw: string | null | undefined): DentalNotas => {
     if (raw) {
       const p = JSON.parse(raw)
       if (p && typeof p === 'object' && !Array.isArray(p)) {
-        return { marcas: p.marcas || {}, desconto: Number(p.desconto) || 0 }
+        return { desconto: Number(p.desconto) || 0 }
       }
     }
   } catch {
     /* conteúdo legado (não-JSON) — ignora */
   }
-  return { marcas: {}, desconto: 0 }
+  return { desconto: 0 }
 }
 
 export default function PacienteDetail() {
@@ -202,7 +206,6 @@ export default function PacienteDetail() {
   const [imageToDelete, setImageToDelete] = useState<ImageRecord | null>(null)
   const [hoofTreatments, setHoofTreatments] = useState<PlannedTreatment[]>([])
   const [dentalTreatments, setDentalTreatments] = useState<Tratamento[]>([])
-  const [dentalMarcas, setDentalMarcas] = useState<Marcas>({})
   const [dentalDesconto, setDentalDesconto] = useState(0)
   const [hoofPaymentPlan, setHoofPaymentPlan] = useState<PaymentPlan>({ installments: [] })
   const [dentalPaymentPlan, setDentalPaymentPlan] = useState<PaymentPlan>({ installments: [] })
@@ -273,11 +276,9 @@ export default function PacienteDetail() {
       setActiveDentalPlan(plan)
       setDentalTreatments(mapDentalTratamentos(state.treatments))
       setDentalPaymentPlan(payment)
-      // Condições clínicas marcadas no odontograma + desconto são persistidos
-      // junto do plano (campo annotations) e reaparecem ao reabrir.
-      const notas = parseDentalNotas(state.annotations)
-      setDentalMarcas(notas.marcas)
-      setDentalDesconto(notas.desconto)
+      // Desconto persistido junto do plano (campo annotations). Marcas de
+      // condições legadas no mesmo campo são ignoradas — sem migração/exclusão.
+      setDentalDesconto(parseDentalNotas(state.annotations).desconto)
     }
   }
 
@@ -338,9 +339,9 @@ export default function PacienteDetail() {
       activeDentalPlan,
       dentalTreatments as unknown as TreatmentItemRecord[],
       dentalPaymentPlan,
-      JSON.stringify({ marcas: dentalMarcas, desconto: dentalDesconto }),
+      JSON.stringify({ desconto: dentalDesconto }),
     )
-  }, [dentalTreatments, dentalPaymentPlan, activeDentalPlan, dentalMarcas, dentalDesconto])
+  }, [dentalTreatments, dentalPaymentPlan, activeDentalPlan, dentalDesconto])
 
   // Salva as anotações de desenho livre do HOF (botão "Salvar Plano" do canvas)
   const handleSaveHofAnnotations = (annotationsJson: string) => {
@@ -508,7 +509,7 @@ export default function PacienteDetail() {
             due_date: i.due_date,
             installments_count: i.installments_count ?? 1,
           })),
-          annotations: JSON.stringify({ marcas: dentalMarcas, desconto: dentalDesconto }),
+          annotations: JSON.stringify({ desconto: dentalDesconto }),
         })
       }
       toast({ title: 'Planejamento salvo!' })
@@ -1087,12 +1088,6 @@ export default function PacienteDetail() {
                   locked={activeDentalPlan.approval_status === 'aprovado'}
                   desconto={dentalDesconto}
                   onDescontoChange={setDentalDesconto}
-                  marcas={dentalMarcas}
-                  onMarcasChange={(m) =>
-                    setDentalMarcas(
-                      typeof m === 'function' ? (m as (p: Marcas) => Marcas)(dentalMarcas) : m,
-                    )
-                  }
                   patientId={id || ''}
                 />
                 <PaymentInfo

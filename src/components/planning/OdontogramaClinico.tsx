@@ -1,7 +1,5 @@
 import { useMemo } from 'react'
 import { cn } from '@/lib/utils'
-import type { CondicaoClinica } from '@/lib/plan-types'
-import { condicaoInfo } from '@/lib/plan-types'
 import {
   PERMANENT_UPPER_RIGHT,
   PERMANENT_UPPER_LEFT,
@@ -19,9 +17,12 @@ import { shapeDeFDI, faceRects, tipoDeFDI } from '@/lib/tooth-shapes'
  * (width 100% + viewBox), garantindo que TODOS os dentes (32 permanentes ou
  * 20 decíduos) fiquem sempre visíveis e clicáveis, sem corte nas laterais.
  * Cada dente é desenhado vetorialmente (coroa dividida em faces clicáveis +
- * raízes anatômicas), com contorno marrom (paleta do app) e cores vivas para
- * as condições. A ordem numérica FDI segue as arcadas 18–11/21–28,
- * 48–41/31–38, 55–51/61–65 e 85–81/71–75.
+ * raízes anatômicas), com contorno marrom (paleta do app). A ordem numérica
+ * FDI segue as arcadas 18–11/21–28, 48–41/31–38, 55–51/61–65 e 85–81/71–75.
+ *
+ * As condições pré-existentes (cárie, restauração, coroa…) foram REMOVIDAS —
+ * o odontograma só reflete agora os tratamentos planejados (lesões/implante)
+ * e a seleção de dente/faces.
  */
 
 const W = 40
@@ -38,18 +39,18 @@ const STROKE_MARROM = '#6B4F42'
 const FILL_DENTE = '#FAF6F0'
 const FILL_AUSENTE = '#EDE3D8'
 
-export type ModoSelecao = 'dente' | 'face' | 'condicao'
+export type ModoSelecao = 'dente' | 'face'
 
 export interface ToothVisual {
-  /** Condições clínicas marcadas no dente inteiro. */
-  condicoes: CondicaoClinica[]
-  /** Condições marcadas em faces específicas: { "16": {O:'carie'} }. */
-  faces: Partial<Record<string, CondicaoClinica>>
-  /** Condição de LESÃO marcada no dente (contador substitui o antigo "tratamento planejado"). */
+  /** Condições clínicas marcadas no dente inteiro (LEGADO — não mais exibidas). */
+  condicoes?: unknown[]
+  /** Condições marcadas em faces específicas (LEGADO — não mais exibidas). */
+  faces?: unknown
+  /** Tratamentos planejados no dente (contador de lesões — círculo vermelho). */
   lesoes: number
   /** Implante planejado/instalado. */
   implante?: boolean
-  /** Dente ausente/edêntulo. */
+  /** Dente ausente/edêntulo (legado — mantém a visualização cinza + X). */
   ausente?: boolean
 }
 
@@ -61,7 +62,6 @@ interface Props {
   /** Faces selecionadas (chave `${dente}:${face}`). */
   facesSelecionadas: string[]
   modo: ModoSelecao
-  condicaoAtiva?: CondicaoClinica | null
   onToothClick: (n: number, mult: boolean) => void
   onFaceClick: (dente: number, face: string, mult: boolean) => void
   denticao: 'permanente' | 'decidua'
@@ -123,22 +123,12 @@ function ToothContent({
   locked?: boolean
   onFaceClick: Props['onFaceClick']
 }) {
-  // Condição dominante para a cor da coroa (fora das faces clicáveis).
-  const cond = vis.condicoes[0]
-  const info = cond ? condicaoInfo(cond) : null
   const shape = useMemo(() => shapeDeFDI(n, isUpper), [n, isUpper])
   const rects = useMemo(() => faceRects(shape.caixa), [shape])
 
-  const coroaFill = vis.ausente
-    ? FILL_AUSENTE
-    : vis.implante
-      ? '#DCF2E4'
-      : info
-        ? `${info.cor}44`
-        : FILL_DENTE
-  const coroaStroke = vis.ausente ? '#B7A99A' : info ? info.cor : STROKE_MARROM
+  const coroaFill = vis.ausente ? FILL_AUSENTE : vis.implante ? '#DCF2E4' : FILL_DENTE
+  const coroaStroke = vis.ausente ? '#B7A99A' : STROKE_MARROM
 
-  const facesCond = vis.faces || {}
   const tipo = tipoDeFDI(n)
 
   return (
@@ -149,7 +139,7 @@ function ToothContent({
           key={i}
           d={d}
           fill={vis.ausente ? FILL_AUSENTE : FILL_DENTE}
-          stroke={vis.condicoes.includes('canal') ? '#E67E22' : STROKE_MARROM}
+          stroke={STROKE_MARROM}
           strokeWidth="1.2"
           strokeLinejoin="round"
         />
@@ -173,31 +163,11 @@ function ToothContent({
             dente={n}
             face={f}
             rect={rects[f]}
-            cor={
-              facesCond[f]
-                ? `${condicaoInfo(facesCond[f]).cor}88`
-                : facesSel.includes(`${n}:${f}`)
-                  ? 'rgba(198,107,77,0.55)'
-                  : 'transparent'
-            }
+            cor={facesSel.includes(`${n}:${f}`) ? 'rgba(198,107,77,0.55)' : 'transparent'}
             locked={locked}
             onClick={() => onFaceClick(n, f, false)}
           />
         ))}
-      {/* Símbolo da condição (desenhado, não texto — acessível via title) */}
-      {info && info.simbolo.trim() && info.key !== 'implante' && (
-        <text
-          x="20"
-          y="47"
-          textAnchor="middle"
-          fontSize="13"
-          fontWeight="bold"
-          fill={info.cor}
-          pointerEvents="none"
-        >
-          {info.simbolo.trim()}
-        </text>
-      )}
       {vis.implante && <ImplantIcon />}
       {vis.ausente && (
         <text
@@ -212,7 +182,7 @@ function ToothContent({
           X
         </text>
       )}
-      {/* Contador de LESÕES (substitui o antigo "tratamento planejado") */}
+      {/* Contador de LESÕES (tratamentos planejados no dente) */}
       {vis.lesoes > 0 && (
         <>
           <circle cx="34" cy="10" r="6" fill="#C0392B" />
@@ -297,7 +267,7 @@ function ArcadaSvg({
       aria-label={isUpper ? 'Arcada superior' : 'Arcada inferior'}
     >
       {pos.map(({ n, x }) => {
-        const vis = visual[String(n)] || { condicoes: [], faces: {}, lesoes: 0 }
+        const vis = visual[String(n)] || { lesoes: 0 }
         const sel = selecionados.includes(n)
         const facesSel = facesSelecionadas
           .filter((k) => k.startsWith(`${n}:`))
@@ -322,7 +292,7 @@ function ArcadaSvg({
                 n={n}
                 vis={vis}
                 isUpper={isUpper}
-                facesSel={facesSel}
+                facesSel={facesSelecionadas}
                 modo={modo}
                 locked={locked}
                 onFaceClick={onFaceClick}
@@ -352,7 +322,6 @@ export function OdontogramaClinico({
   selecionados,
   facesSelecionadas,
   modo,
-  condicaoAtiva,
   onToothClick,
   onFaceClick,
   denticao,

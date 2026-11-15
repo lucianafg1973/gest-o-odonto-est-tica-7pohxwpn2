@@ -22,25 +22,15 @@ import {
 import { Plus, Pencil, CheckCircle2, Ban, RotateCcw, Trash2, Lock } from 'lucide-react'
 import { ProcedureRecord } from '@/services/procedures'
 import { formatCurrency } from '@/lib/price-calculation'
-import type { Tratamento, CondicaoClinica } from '@/lib/plan-types'
-import {
-  CONDICOES,
-  STATUS_LABEL,
-  STATUS_COR,
-  tratamentoFromProcedure,
-  isCondicaoValida,
-} from '@/lib/plan-types'
+import type { Tratamento } from '@/lib/plan-types'
+import { STATUS_LABEL, STATUS_COR, tratamentoFromProcedure } from '@/lib/plan-types'
 import {
   orcamentoCents,
   orcamentoTotal,
   subtotaisPorArcada,
   mensagemOrcamento,
 } from '@/lib/orcamento'
-import {
-  OdontogramaClinico,
-  ToothVisual,
-  ModoSelecao,
-} from '@/components/planning/OdontogramaClinico'
+import { OdontogramaClinico, ToothVisual } from '@/components/planning/OdontogramaClinico'
 import { TratamentoDialog } from '@/components/planning/TratamentoDialog'
 import { AddProcedureFlow, abrevFaces } from '@/components/planning/AddProcedureFlow'
 import { createMedicalRecord } from '@/services/medical_records'
@@ -52,17 +42,14 @@ import { createMedicalRecord } from '@/services/medical_records'
  * (ImplantPanel — renderizado em outro módulo). Vários tratamentos por dente coexistem; o total alimenta
  * as condições de pagamento (PaymentInfo) no componente pai.
  *
+ * O sistema de CONDIÇÕES PRÉ-EXISTENTES (cárie, restauração, coroa…) foi
+ * removido a pedido da equipe clínica — o odontograma continua existindo e
+ * clicável, mas só reflete os tratamentos planejados. Marcas de condições
+ * persistidas em planos antigos simplesmente deixam de ser exibidas.
+ *
  * Contador de lesões: cada tratamento ativo (não cancelado) do dente conta
- * como uma lesão marcada no odontograma (círculo vermelho) — substitui o
- * antigo contador "tratamento planejado".
+ * como uma lesão marcada no odontograma (círculo vermelho).
  */
-
-export interface Marcas {
-  [tooth: string]: {
-    condicoes: CondicaoClinica[]
-    faces: Partial<Record<string, CondicaoClinica>>
-  }
-}
 
 interface Props {
   procedures: ProcedureRecord[]
@@ -73,9 +60,6 @@ interface Props {
   /** Desconto em reais aplicado sobre o subtotal do orçamento. */
   desconto: number
   onDescontoChange: (v: number) => void
-  /** Marcas clínicas do odontograma — controladas pelo pai (persistidas no plano). */
-  marcas: Marcas
-  onMarcasChange: (m: Marcas | ((prev: Marcas) => Marcas)) => void
   /** Total final (subtotal − desconto) em reais, para o PaymentInfo do pai. */
   onTotalChange?: (total: number) => void
   /** Paciente dono do planejamento — usado ao registrar a evolução da execução. */
@@ -90,13 +74,9 @@ export function OdontologicoTab({
   locked = false,
   desconto,
   onDescontoChange,
-  marcas,
-  onMarcasChange,
   patientId,
 }: Props) {
   const [denticao, setDenticao] = useState<'permanente' | 'decidua'>('permanente')
-  const [condicaoAtiva, setCondicaoAtiva] = useState<CondicaoClinica | null>(null)
-  const setMarcas = onMarcasChange
   const [selecionados, setSelecionados] = useState<number[]>([])
   const [facesSelecionadas, setFacesSelecionadas] = useState<string[]>([])
   const [denteAberto, setDenteAberto] = useState<number | null>(null)
@@ -107,48 +87,23 @@ export function OdontologicoTab({
   /** Novo fluxo "Adicionar procedimento": odontograma + tabela completa. */
   const [flowOpen, setFlowOpen] = useState(false)
   const [flowDenteInicial, setFlowDenteInicial] = useState<string | null>(null)
-  const modo: ModoSelecao = condicaoAtiva ? 'condicao' : 'dente'
 
-  /** Estado visual de cada dente a partir dos tratamentos + marcações. */
+  /** Estado visual de cada dente a partir dos tratamentos planejados. */
   const visual = useMemo(() => {
     const map: Record<string, ToothVisual> = {}
     tratamentos.forEach((t) => {
       const key = String(t.tooth || '').trim()
       if (!key) return
-      const v = map[key] || { condicoes: [], faces: {}, lesoes: 0 }
+      const v = map[key] || { lesoes: 0 }
       if (t.status !== 'cancelado') v.lesoes += 1
       if (t.categoria === 'implante') v.implante = true
       map[key] = v
     })
-    Object.entries(marcas).forEach(([k, m]) => {
-      const v = map[k] || { condicoes: [], faces: {}, lesoes: 0 }
-      // Condições desconhecidas (chaves removidas do catálogo, ex. planos
-      // antigos com 'edentulo'/'raspagem') são ignoradas sem erro.
-      v.condicoes = (m.condicoes || []).filter(isCondicaoValida)
-      const faces: typeof v.faces = {}
-      Object.entries(m.faces || {}).forEach(([f, c]) => {
-        if (isCondicaoValida(c)) faces[f] = c
-      })
-      v.faces = faces
-      v.ausente = v.condicoes.includes('ausente')
-      map[k] = v
-    })
     return map
-  }, [tratamentos, marcas])
+  }, [tratamentos])
 
   const onToothClick = (n: number, mult: boolean) => {
     if (locked) return
-    if (condicaoAtiva) {
-      setMarcas((prev) => {
-        const cur = prev[String(n)] || { condicoes: [], faces: {} }
-        const tem = cur.condicoes.includes(condicaoAtiva)
-        const condicoes = tem
-          ? cur.condicoes.filter((c) => c !== condicaoAtiva)
-          : [...cur.condicoes, condicaoAtiva]
-        return { ...prev, [String(n)]: { ...cur, condicoes } }
-      })
-      return
-    }
     if (mult) {
       setSelecionados((prev) => (prev.includes(n) ? prev.filter((x) => x !== n) : [...prev, n]))
       return
@@ -241,7 +196,7 @@ export function OdontologicoTab({
         </div>
         <p className="text-[11px] text-[#6B4F42]">
           Clique em um dente para gerenciar seus tratamentos (canal, pino, restauração… — vários por
-          dente). Escolha uma condição na legenda para marcar o exame clínico.
+          dente).
         </p>
 
         {/* Dentição + modo */}
@@ -277,40 +232,11 @@ export function OdontologicoTab({
           )}
         </div>
 
-        {/* Condições clínicas (exame) */}
-        <div className="flex flex-wrap items-center gap-1.5 bg-white border border-[#EDE3D8] rounded-xl p-2">
-          <span className="text-[10px] font-bold uppercase text-[#6B4F42] mr-1">
-            Condições pré-existentes (clique no dente):
-          </span>
-          {CONDICOES.map((c) => (
-            <button
-              key={c.key}
-              type="button"
-              title={c.descricao}
-              disabled={locked}
-              className={`px-2 py-0.5 rounded-full border text-[10px] font-semibold ${
-                condicaoAtiva === c.key ? 'text-white' : 'text-[#2D1B14]'
-              }`}
-              style={
-                condicaoAtiva === c.key
-                  ? { background: c.cor, borderColor: c.cor }
-                  : { background: `${c.cor}22`, borderColor: c.cor }
-              }
-              onClick={() => {
-                setCondicaoAtiva((cur) => (cur === c.key ? null : c.key))
-              }}
-            >
-              {c.label}
-            </button>
-          ))}
-        </div>
-
         <OdontogramaClinico
           visual={visual}
           selecionados={selecionados}
           facesSelecionadas={facesSelecionadas}
-          modo={modo}
-          condicaoAtiva={condicaoAtiva}
+          modo="dente"
           onToothClick={onToothClick}
           onFaceClick={(dente, face, _m) => onFaceClick(dente, face)}
           denticao={denticao}
