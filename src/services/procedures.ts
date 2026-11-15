@@ -19,7 +19,7 @@ export interface ProcedureRecord {
   use_manual_price?: boolean
   manual_price?: number
   computed_price?: number
-  /** TABELA ÚNICA — migração 0016 */
+  /** Tabela de Procedimentos e Preços — migração 0016 */
   external_code?: string
   specialty?: string
   family?: string

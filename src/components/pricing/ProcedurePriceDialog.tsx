@@ -48,6 +48,7 @@ export function ProcedurePriceDialog({
   const [form, setForm] = useState<Record<string, string>>({})
   const [useManual, setUseManual] = useState(false)
   const [manualPrice, setManualPrice] = useState('')
+  const [maxDesconto, setMaxDesconto] = useState('')
   const [errors, setErrors] = useState<FieldErrors>({})
   const [saving, setSaving] = useState(false)
 
@@ -60,6 +61,9 @@ export function ProcedurePriceDialog({
       setForm(initial)
       setUseManual(procedure.use_manual_price ?? false)
       setManualPrice(String(procedure.manual_price ?? ''))
+      setMaxDesconto(
+        procedure.max_discount_percent != null ? String(procedure.max_discount_percent) : '',
+      )
     }
     setErrors({})
   }, [procedure])
@@ -101,6 +105,9 @@ export function ProcedurePriceDialog({
     if (useManual && (!manualPrice || parseFloat(manualPrice) <= 0)) {
       newErrors.manual_price = 'Informe um preço manual válido'
     }
+    if (maxDesconto && (parseFloat(maxDesconto) < 0 || parseFloat(maxDesconto) > 100)) {
+      newErrors.max_discount_percent = 'Informe um percentual entre 0 e 100'
+    }
     if (Object.keys(newErrors).length > 0) {
       setErrors(newErrors)
       return
@@ -120,6 +127,7 @@ export function ProcedurePriceDialog({
         manual_price: useManual ? parseFloat(manualPrice) || 0 : 0,
         computed_price: computedPrice,
         price: useManual ? parseFloat(manualPrice) || 0 : computedPrice,
+        max_discount_percent: maxDesconto.trim() === '' ? null : parseFloat(maxDesconto),
       })
       toast({ title: 'Preço atualizado!' })
       onOpenChange(false)
@@ -196,6 +204,25 @@ export function ProcedurePriceDialog({
             </div>
             {errors.manual_price && (
               <p className="text-xs text-red-500 mt-1">{errors.manual_price}</p>
+            )}
+          </div>
+          <div>
+            <Label className="text-xs font-semibold">Desconto máximo permitido (%)</Label>
+            <Input
+              type="number"
+              min={0}
+              max={100}
+              step="0.01"
+              value={maxDesconto}
+              onChange={(e) => setMaxDesconto(e.target.value)}
+              placeholder="0"
+              className="bg-[#FFFDF9] border-[#EDE3D8]"
+            />
+            <p className="text-[10px] text-[#6B4F42] mt-1">
+              Limite gerencial de desconto sobre o preço oficial deste procedimento.
+            </p>
+            {errors.max_discount_percent && (
+              <p className="text-xs text-red-500 mt-1">{errors.max_discount_percent}</p>
             )}
           </div>
           <div className="flex justify-end gap-2 pt-2 border-t border-[#EDE3D8]">

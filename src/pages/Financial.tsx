@@ -34,7 +34,7 @@ const MENU: { key: Secao; label: string; icon: typeof Clock }[] = [
 
 /**
  * FINANCEIRO — página autocontida: carrega os próprios dados (planilha de
- * custos, capacidade produtiva e tabela única de procedimentos) e deriva a
+ * custos, capacidade produtiva e Tabela de Procedimentos e Preços) e deriva a
  * hora clínica em tempo real, sem props externas.
  */
 export default function Financial() {
@@ -79,7 +79,7 @@ export default function Financial() {
       <div>
         <h1 className="font-serif-title text-2xl font-bold text-[#2D1B14]">Financeiro</h1>
         <p className="text-sm text-[#6B4F42]">
-          Hora clínica, tabela única de procedimentos e precificação inteligente.
+          Hora clínica, Tabela de Procedimentos e Preços e precificação inteligente.
         </p>
       </div>
 

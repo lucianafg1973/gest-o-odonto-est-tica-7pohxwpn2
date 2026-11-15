@@ -1,5 +1,5 @@
 import { useMemo, useRef, useState } from 'react'
-import { ProcedureRecord, deleteProcedure, updateProcedureWithHistory } from '@/services/procedures'
+import { ProcedureRecord, createProcedure, updateProcedureWithHistory } from '@/services/procedures'
 import { ProcedurePriceDialog } from '@/components/pricing/ProcedurePriceDialog'
 import CsvImporter from '@/components/pricing/CsvImporter'
 import DiscountSimulator from '@/components/pricing/DiscountSimulator'
@@ -21,12 +21,15 @@ import {
   SPECIALTIES,
 } from '@/lib/pricing-engine'
 import { CsvRow, publicarCsv, parseCsv } from '@/lib/csv-import'
-import { Upload, Search, Pencil, RefreshCw, Download, Trash2 } from 'lucide-react'
+import { Upload, Search, Pencil, RefreshCw, Download, Copy, Power } from 'lucide-react'
 
 /**
- * TABELA ÚNICA DE PROCEDIMENTOS + PRECIFICAÇÃO INTELIGENTE.
+ * TABELA DE PROCEDIMENTOS E PREÇOS + PRECIFICAÇÃO INTELIGENTE.
  * Uma única área para tabela e precificação (não há segunda tabela
  * "desejada"). Importação por CSV acionada por botão, com prévia.
+ * CRUD sem exclusão definitiva: catálogo se gerencia por DUPLICAR e
+ * INATIVAR/REATIVAR (inativo some da seleção no planejamento, mas
+ * continua visível aqui, com marcação).
  */
 interface Props {
   procedures: ProcedureRecord[]
@@ -134,6 +137,61 @@ export default function ProceduresPricingPage({ procedures, horaClinica, onReloa
     a.click()
     URL.revokeObjectURL(url)
   }
+
+  const duplicar = async (proc: ProcedureRecord) => {
+    const novoCodigo = gerarCodigoDuplicado(proc, procedures)
+    try {
+      const {
+        id: _id,
+        history: _history,
+        import_batch: _import_batch,
+        import_status: _import_status,
+        ...copiaveis
+      } = proc
+      const copia = await createProcedure({
+        ...copiaveis,
+        external_code: novoCodigo,
+        active: false,
+        import_status: 'manual',
+        use_manual_price: proc.use_manual_price ?? false,
+        manual_price: proc.manual_price ?? 0,
+      })
+      toast({
+        title: 'Procedimento duplicado!',
+        description: `${proc.name} → código ${novoCodigo}. Edite os dados e ative quando terminar.`,
+      })
+      onReload()
+      setEditando(copia)
+    } catch {
+      toast({ title: 'Erro ao duplicar', variant: 'destructive' })
+    }
+  }
+
+  const alternarAtivo = async (proc: ProcedureRecord) => {
+    const novoEstado = proc.active === false
+    try {
+      await updateProcedureWithHistory(
+        proc,
+        { active: novoEstado },
+        profile?.name || profile?.email || 'usuário',
+      )
+      toast({
+        title: novoEstado ? 'Procedimento reativado!' : 'Procedimento inativado!',
+        description: novoEstado
+          ? `${proc.name} voltou à seleção no planejamento.`
+          : `${proc.name} saiu da seleção no planejamento, mas segue listado aqui.`,
+      })
+      onReload()
+    } catch {
+      toast({
+        title: novoEstado ? 'Erro ao reativar' : 'Erro ao inativar',
+        variant: 'destructive',
+      })
+    }
+  }
+
+  /** Botão Inativar/Reativar pelo estado atual do registro. */
+  const procEstaAtivo = (proc: ProcedureRecord) => proc.active !== false
 
   const salvarPreco = async (proc: ProcedureRecord, price: number) => {
     try {
@@ -252,7 +310,7 @@ export default function ProceduresPricingPage({ procedures, horaClinica, onReloa
         </Button>
       </div>
 
-      {/* Tabela única */}
+      {/* Tabela de Procedimentos e Preços */}
       <Card className="card-warm">
         <CardContent className="pt-5">
           <div className="overflow-x-auto">
@@ -268,95 +326,120 @@ export default function ProceduresPricingPage({ procedures, horaClinica, onReloa
                   <th className="py-2 pr-2 text-right">Margem</th>
                   <th className="py-2 pr-2 text-right">Mínimo</th>
                   <th className="py-2 pr-2 text-right">Recomendado</th>
+                  <th className="py-2 pr-2 text-right">Desc. máx.</th>
                   <th className="py-2" />
                 </tr>
               </thead>
               <tbody>
-                {filtrados.map(({ proc, p }) => (
-                  <tr key={proc.id} className="border-b border-[#F5EEE6] hover:bg-[#FAF6F0]">
-                    <td className="py-2 pr-2 font-mono text-[10px] text-[#6B4F42]">
-                      {proc.external_code || '—'}
-                    </td>
-                    <td className="py-2 pr-2">
-                      <p className="text-[11px] font-semibold text-[#2D1B14]">
-                        {proc.specialty || '—'}
-                      </p>
-                      <p className="text-[10px] text-[#6B4F42]">{proc.family || '—'}</p>
-                    </td>
-                    <td className="py-2 pr-2 text-[11px]">{proc.name}</td>
-                    <td className="py-2 pr-2 text-right text-[11px]">
-                      {proc.duration_minutes || '—'} min
-                    </td>
-                    <td className="py-2 pr-2 text-right text-[11px]">
-                      {p.custosDiretos > 0 ? formatCurrency(p.custosDiretos) : '—'}
-                    </td>
-                    <td className="py-2 pr-2 text-right">
-                      {p.pendente && proc.price === 0 ? (
-                        <Badge className="bg-amber-100 text-amber-800 text-[9px]">pendente</Badge>
-                      ) : (
-                        <span className="font-bold text-[#C66B4D]">
-                          {formatCurrency(proc.price ?? 0)}
+                {filtrados.map(({ proc, p }) => {
+                  const ativo = procEstaAtivo(proc)
+                  return (
+                    <tr
+                      key={proc.id}
+                      className={`border-b border-[#F5EEE6] hover:bg-[#FAF6F0] ${ativo ? '' : 'opacity-50'}`}
+                    >
+                      <td className="py-2 pr-2 font-mono text-[10px] text-[#6B4F42]">
+                        {proc.external_code || '—'}
+                      </td>
+                      <td className="py-2 pr-2">
+                        <p className="text-[11px] font-semibold text-[#2D1B14]">
+                          {proc.specialty || '—'}
+                        </p>
+                        <p className="text-[10px] text-[#6B4F42]">{proc.family || '—'}</p>
+                      </td>
+                      <td className="py-2 pr-2 text-[11px]">
+                        <span className="inline-flex items-center gap-1.5">
+                          {proc.name}
+                          {!ativo && (
+                            <Badge className="bg-[#6B4F42] text-white text-[9px]">inativo</Badge>
+                          )}
                         </span>
-                      )}
-                    </td>
-                    <td className="py-2 pr-2 text-right">
-                      {p.pendente ? (
-                        <span className="text-[10px] text-[#6B4F42] italic">pendente</span>
-                      ) : (
-                        <span
-                          className={
-                            p.abaixoMargemMinima ? 'text-red-600 font-bold' : 'text-[#2D1B14]'
-                          }
+                      </td>
+                      <td className="py-2 pr-2 text-right text-[11px]">
+                        {proc.duration_minutes || '—'} min
+                      </td>
+                      <td className="py-2 pr-2 text-right text-[11px]">
+                        {p.custosDiretos > 0 ? formatCurrency(p.custosDiretos) : '—'}
+                      </td>
+                      <td className="py-2 pr-2 text-right">
+                        {p.pendente && proc.price === 0 ? (
+                          <Badge className="bg-amber-100 text-amber-800 text-[9px]">pendente</Badge>
+                        ) : (
+                          <span className="font-bold text-[#C66B4D]">
+                            {formatCurrency(proc.price ?? 0)}
+                          </span>
+                        )}
+                      </td>
+                      <td className="py-2 pr-2 text-right">
+                        {p.pendente ? (
+                          <span className="text-[10px] text-[#6B4F42] italic">pendente</span>
+                        ) : (
+                          <span
+                            className={
+                              p.abaixoMargemMinima ? 'text-red-600 font-bold' : 'text-[#2D1B14]'
+                            }
+                          >
+                            {p.margemAtual.toFixed(0)}%
+                          </span>
+                        )}
+                      </td>
+                      <td className="py-2 pr-2 text-right text-[11px] text-[#6B4F42]">
+                        {p.pendente ? '—' : formatCurrency(p.precoMinimo)}
+                      </td>
+                      <td className="py-2 pr-2 text-right text-[11px] text-[#6B4F42]">
+                        {p.pendente ? '—' : formatCurrency(p.precoRecomendado)}
+                      </td>
+                      <td className="py-2 pr-2 text-right text-[11px] text-[#6B4F42]">
+                        {proc.max_discount_percent != null ? `${proc.max_discount_percent}%` : '—'}
+                      </td>
+                      <td className="py-2 text-right whitespace-nowrap">
+                        <Button
+                          size="icon"
+                          variant="ghost"
+                          title="Editar"
+                          className="h-7 w-7 text-[#C66B4D]"
+                          onClick={() => setEditando(proc)}
                         >
-                          {p.margemAtual.toFixed(0)}%
-                        </span>
-                      )}
-                    </td>
-                    <td className="py-2 pr-2 text-right text-[11px] text-[#6B4F42]">
-                      {p.pendente ? '—' : formatCurrency(p.precoMinimo)}
-                    </td>
-                    <td className="py-2 pr-2 text-right text-[11px] text-[#6B4F42]">
-                      {p.pendente ? '—' : formatCurrency(p.precoRecomendado)}
-                    </td>
-                    <td className="py-2 text-right whitespace-nowrap">
-                      <Button
-                        size="icon"
-                        variant="ghost"
-                        className="h-7 w-7 text-[#C66B4D]"
-                        onClick={() => setEditando(proc)}
-                      >
-                        <Pencil className="w-3.5 h-3.5" />
-                      </Button>
-                      <Button
-                        size="icon"
-                        variant="ghost"
-                        className="h-7 w-7 text-[#6B4F42]"
-                        onClick={() => setSimulando({ proc, p })}
-                        disabled={p.pendente}
-                      >
-                        <Search className="w-3.5 h-3.5" />
-                      </Button>
-                      <Button
-                        size="icon"
-                        variant="ghost"
-                        className="h-7 w-7 text-red-400"
-                        onClick={async () => {
-                          if (confirm(`Excluir "${proc.name}" da tabela?`)) {
-                            await deleteProcedure(proc.id)
-                            onReload()
-                          }
-                        }}
-                      >
-                        <Trash2 className="w-3.5 h-3.5" />
-                      </Button>
-                    </td>
-                  </tr>
-                ))}
+                          <Pencil className="w-3.5 h-3.5" />
+                        </Button>
+                        <Button
+                          size="icon"
+                          variant="ghost"
+                          title="Simular desconto"
+                          className="h-7 w-7 text-[#6B4F42]"
+                          onClick={() => setSimulando({ proc, p })}
+                          disabled={p.pendente}
+                        >
+                          <Search className="w-3.5 h-3.5" />
+                        </Button>
+                        <Button
+                          size="icon"
+                          variant="ghost"
+                          title={`Duplicar ${proc.name}`}
+                          className="h-7 w-7 text-[#6B4F42]"
+                          onClick={() => duplicar(proc)}
+                        >
+                          <Copy className="w-3.5 h-3.5" />
+                        </Button>
+                        <Button
+                          size="icon"
+                          variant="ghost"
+                          title={ativo ? `Inativar ${proc.name}` : `Reativar ${proc.name}`}
+                          className={`h-7 w-7 ${ativo ? 'text-amber-600' : 'text-green-700'}`}
+                          onClick={() => alternarAtivo(proc)}
+                        >
+                          <Power className="w-3.5 h-3.5" />
+                        </Button>
+                      </td>
+                    </tr>
+                  )
+                })}
               </tbody>
             </table>
             {filtrados.length === 0 && (
               <p className="text-center text-[11px] text-[#6B4F42] py-6 italic">
-                Nenhum procedimento. Use “Importar CSV” para popular a tabela única.
+                Nenhum procedimento. Use “Importar CSV” para popular a Tabela de Procedimentos e
+                Preços.
               </p>
             )}
           </div>
@@ -398,4 +481,17 @@ function especialidadesUnicas(list: Precificado[]): string[] {
 
 function parseCsvLocal(text: string): CsvRow[] {
   return parseCsv(text).rows
+}
+
+/** Código da cópia: base-C2; se já existir, incrementa até livre (-C3, -C4…). */
+function gerarCodigoDuplicado(proc: ProcedureRecord, todos: ProcedureRecord[]): string {
+  const base = proc.external_code || ''
+  if (!base) return ''
+  const dupMatch = base.match(/-C(\d+)$/)
+  const prefixo = dupMatch ? base.slice(0, -dupMatch[0].length) : base
+  const existentes = new Set(todos.map((p) => p.external_code).filter((c): c is string => !!c))
+  for (let n = dupMatch ? Number(dupMatch[1]) + 1 : 2; ; n++) {
+    const candidato = `${prefixo}-C${n}`
+    if (!existentes.has(candidato)) return candidato
+  }
 }

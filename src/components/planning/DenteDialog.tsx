@@ -21,7 +21,8 @@ import { Search, Trash2, Loader2, Plus } from 'lucide-react'
 import type { ProcedureRecord } from '@/services/procedures'
 import { getProcedures } from '@/services/procedures'
 import { formatCurrency } from '@/lib/price-calculation'
-import { precoEfetivo } from '@/lib/pricing-engine'
+import { precoEfetivo, FAMILY_SUGGESTIONS, normalizeSpecialty } from '@/lib/pricing-engine'
+import { ChevronRight, FolderTree, List } from 'lucide-react'
 import type { Tratamento } from '@/lib/plan-types'
 import { tratamentoFromProcedure } from '@/lib/plan-types'
 import { FACE_LABEL, facesDeFDI } from '@/lib/tooth-data'
@@ -82,10 +83,14 @@ export function DenteDialog({
   /** Fallback 0.0.42: carrega a tabela do banco quando o pai abre sem dados. */
   const [tabelaLocal, setTabelaLocal] = useState<ProcedureRecord[]>(procedures)
   const [carregando, setCarregando] = useState(false)
+  /** Navegação em cascata: null = modo busca (padrão); senão especialidade → família. */
+  const [cascEspec, setCascEspec] = useState<string | null>(null)
+  const [cascFamilia, setCascFamilia] = useState<string | null>(null)
+  const [modoCascata, setModoCascata] = useState(false)
 
   useEffect(() => setTabelaLocal(procedures), [procedures])
 
-  // Reabertura limpa: nenhum procedimento/faces/valor/obs das vezes anteriores.
+  // Reabertura limpa: nenhum procedimento/faces/valor/obs/cascata das vezes anteriores.
   useEffect(() => {
     if (!open) return
     setBusca('')
@@ -94,6 +99,9 @@ export function DenteDialog({
     setFaces([])
     setPrecoStr('')
     setObservacoes('')
+    setCascEspec(null)
+    setCascFamilia(null)
+    setModoCascata(false)
     if (procedures.length === 0) {
       setCarregando(true)
       getProcedures()
@@ -127,6 +135,39 @@ export function DenteDialog({
     )
   }, [ativos, buscaSemAcento])
 
+  /** Especialidades com procedimentos ativos, ordenadas. */
+  const especsDisponiveis = useMemo(() => {
+    const set = new Set<string>()
+    ativos.forEach((p) => {
+      const esp = normalizeSpecialty(p.specialty || '')
+      if (esp) set.add(esp)
+    })
+    return Array.from(set).sort((a, b) => a.localeCompare(b, 'pt-BR'))
+  }, [ativos])
+
+  /** Famílias (sugestões + as que existem na tabela) da especialidade aberta. */
+  const familiasDisponiveis = useMemo(() => {
+    if (!cascEspec) return []
+    const set = new Set<string>(
+      (FAMILY_SUGGESTIONS[cascEspec] || []).filter((f) =>
+        ativos.some((p) => normalizeSpecialty(p.specialty || '') === cascEspec && p.family === f),
+      ),
+    )
+    ativos.forEach((p) => {
+      if (normalizeSpecialty(p.specialty || '') === cascEspec && p.family) set.add(p.family)
+    })
+    return Array.from(set).sort((a, b) => a.localeCompare(b, 'pt-BR'))
+  }, [ativos, cascEspec])
+
+  /** Procedimentos da especialidade+família abertas (na família sem nome: os sem family). */
+  const procsDaFamilia = useMemo(() => {
+    if (!cascEspec || !cascFamilia) return []
+    return ativos.filter(
+      (p) =>
+        normalizeSpecialty(p.specialty || '') === cascEspec && (p.family || '') === cascFamilia,
+    )
+  }, [ativos, cascEspec, cascFamilia])
+
   const facesDoDente = dente != null ? facesDeFDI(dente) : []
 
   const escolherProc = (p: ProcedureRecord) => {
@@ -158,6 +199,7 @@ export function DenteDialog({
     setFaces([])
     setPrecoStr('')
     setObservacoes('')
+    setCascFamilia(null)
   }
 
   const subtotalCents = items
@@ -184,24 +226,130 @@ export function DenteDialog({
         </DialogHeader>
 
         <div className="space-y-3">
-          {/* 1. Adicionar procedimento — busca pela 1ª letra */}
+          {/* 1. Adicionar procedimento — busca pela 1ª letra OU cascata
+              Especialidade → Família → Procedimentos */}
           <div className="space-y-1">
-            <Label className="text-xs font-semibold">Adicionar procedimento</Label>
-            <div className="relative">
-              <Search className="w-3.5 h-3.5 absolute left-2.5 top-1/2 -translate-y-1/2 text-[#6B4F42]" />
-              <Input
-                value={busca}
-                disabled={locked}
-                onChange={(e) => {
-                  const v = e.target.value
-                  setBusca(v)
-                  setBuscaSemAcento(v.normalize('NFD').replace(/[\u0300-\u036f]/g, ''))
-                }}
-                placeholder="Digite a 1ª letra…"
-                className="pl-8 bg-white border-[#EDE3D8] text-xs h-8"
-              />
+            <div className="flex items-center justify-between gap-2">
+              <Label className="text-xs font-semibold">Adicionar procedimento</Label>
+              <div className="flex items-center gap-1">
+                <Button
+                  type="button"
+                  size="sm"
+                  variant="ghost"
+                  title="Buscar pelo nome (1ª letra)"
+                  className={`h-6 w-6 p-0 ${!modoCascata ? 'text-[#C66B4D]' : 'text-[#6B4F42]'}`}
+                  onClick={() => {
+                    setModoCascata(false)
+                    setCascEspec(null)
+                    setCascFamilia(null)
+                  }}
+                >
+                  <List className="w-3.5 h-3.5" />
+                </Button>
+                <Button
+                  type="button"
+                  size="sm"
+                  variant="ghost"
+                  title="Navegar: Especialidade → Família → Procedimentos"
+                  className={`h-6 w-6 p-0 ${modoCascata ? 'text-[#C66B4D]' : 'text-[#6B4F42]'}`}
+                  onClick={() => {
+                    setModoCascata(true)
+                    setBusca('')
+                    setBuscaSemAcento('')
+                  }}
+                >
+                  <FolderTree className="w-3.5 h-3.5" />
+                </Button>
+              </div>
             </div>
-            {carregando ? (
+
+            {/* A) Cascata Especialidade → Família → Procedimentos */}
+            {modoCascata ? (
+              <div className="max-h-52 overflow-y-auto border border-[#EDE3D8] rounded-lg divide-y divide-[#F5EEE6]">
+                {!cascEspec ? (
+                  especsDisponiveis.length === 0 ? (
+                    <p className="text-[11px] text-amber-800 bg-amber-50 p-2">
+                      Nenhuma especialidade com procedimentos ativos.
+                    </p>
+                  ) : (
+                    especsDisponiveis.map((esp) => (
+                      <button
+                        key={esp}
+                        type="button"
+                        disabled={locked}
+                        className="w-full text-left px-2.5 py-1.5 text-xs flex items-center justify-between gap-2 bg-white hover:bg-[#FAF6F0]"
+                        onClick={() => setCascEspec(esp)}
+                      >
+                        <span className="font-semibold text-[#2D1B14]">{esp}</span>
+                        <ChevronRight className="w-3.5 h-3.5 text-[#6B4F42] shrink-0" />
+                      </button>
+                    ))
+                  )
+                ) : !cascFamilia ? (
+                  familiasDisponiveis.length === 0 ? (
+                    <p className="text-[11px] text-amber-800 bg-amber-50 p-2">
+                      Nenhuma família nesta especialidade.
+                    </p>
+                  ) : (
+                    <>
+                      <button
+                        type="button"
+                        className="w-full text-left px-2.5 py-1 text-[10px] font-semibold text-[#C66B4D] bg-[#FBF3DC] flex items-center gap-1"
+                        onClick={() => setCascEspec(null)}
+                      >
+                        ← {cascEspec}
+                      </button>
+                      {familiasDisponiveis.map((fam) => (
+                        <button
+                          key={fam}
+                          type="button"
+                          disabled={locked}
+                          className="w-full text-left px-2.5 py-1.5 text-xs flex items-center justify-between gap-2 bg-white hover:bg-[#FAF6F0]"
+                          onClick={() => setCascFamilia(fam)}
+                        >
+                          <span className="font-semibold text-[#2D1B14]">{fam}</span>
+                          <ChevronRight className="w-3.5 h-3.5 text-[#6B4F42] shrink-0" />
+                        </button>
+                      ))}
+                    </>
+                  )
+                ) : (
+                  <>
+                    <button
+                      type="button"
+                      className="w-full text-left px-2.5 py-1 text-[10px] font-semibold text-[#C66B4D] bg-[#FBF3DC] flex items-center gap-1"
+                      onClick={() => setCascFamilia(null)}
+                    >
+                      ← {cascEspec} › {cascFamilia}
+                    </button>
+                    {procsDaFamilia.map((p) => (
+                      <button
+                        key={p.id}
+                        type="button"
+                        disabled={locked}
+                        className={`w-full text-left px-2.5 py-1.5 text-xs flex items-center justify-between gap-2 ${
+                          procSel?.id === p.id ? 'bg-[#FBF3DC]' : 'bg-white hover:bg-[#FAF6F0]'
+                        }`}
+                        onClick={() => escolherProc(p)}
+                      >
+                        <span className="truncate">
+                          <span className="font-semibold text-[#2D1B14]">{p.name}</span>
+                          {p.external_code ? (
+                            <span className="text-[10px] text-[#6B4F42] font-mono">
+                              {' '}
+                              {p.external_code}
+                            </span>
+                          ) : null}
+                        </span>
+                        <span className="text-[10px] text-[#6B4F42] whitespace-nowrap">
+                          {formatCurrency(precoEfetivo(p) || 0)}
+                        </span>
+                      </button>
+                    ))}
+                  </>
+                )}
+              </div>
+            ) : carregando ? (
               <div className="flex items-center gap-2 py-3 text-xs text-[#6B4F42]">
                 <Loader2 className="w-4 h-4 animate-spin text-[#C66B4D]" /> Carregando tabela…
               </div>
