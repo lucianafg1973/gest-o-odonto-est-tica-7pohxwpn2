@@ -20,6 +20,8 @@ import {
   MessageCircle,
   CheckCircle2,
   Cake,
+  Check,
+  Users,
 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
@@ -82,6 +84,8 @@ export default function Agenda() {
   const [endTime, setEndTime] = useState('09:40')
 
   // dialogs
+  // Filtro de profissionais (multi-seleção): vazio = Todos.
+  const [profFilter, setProfFilter] = useState<string[]>([])
   const [editTarget, setEditTarget] = useState<AppointmentRecord | null>(null)
   const [cancelTarget, setCancelTarget] = useState<{
     app: AppointmentRecord
@@ -333,8 +337,24 @@ export default function Agenda() {
     }
   }
 
-  const confirmadosList = appointments.filter((a) => a.status === 'confirmado')
   const professionalOptions = professionals.map((p) => ({ id: p.id, name: p.name || 'Sem nome' }))
+
+  /**
+   * Filtro de profissionais aplicado à grade, à lista e aos indicadores.
+   * Seleção vazia = Todos; com seleção, só entram agendamentos cujo profissional
+   * está entre os escolhidos (agendamento sem profissional some do recorte).
+   */
+  const visibleAppointments = useMemo(() => {
+    if (profFilter.length === 0) return appointments
+    return appointments.filter((a) => !!a.professional && profFilter.includes(a.professional))
+  }, [appointments, profFilter])
+
+  const confirmadosList = visibleAppointments.filter((a) => a.status === 'confirmado')
+
+  /** Clicou = seleciona; clicou de novo = desseleciona. */
+  const toggleProfFilter = (id: string) => {
+    setProfFilter((prev) => (prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id]))
+  }
 
   return (
     <div className="space-y-6">
@@ -415,13 +435,58 @@ export default function Agenda() {
         </div>
       </div>
 
-      {/* Indicadores de comparecimento — visível nas duas abas */}
-      <AttendanceIndicatorsPanel appointments={appointments} professionals={professionalOptions} />
+      {/* Filtro de profissionais (multi-seleção) — vale para grade, lista e indicadores */}
+      <div className="flex flex-wrap items-center gap-2 bg-white border border-[#EDE3D8] rounded-xl px-3 py-2 shadow-subtle">
+        <span className="flex items-center gap-1 text-[10px] font-semibold uppercase tracking-wide text-[#6B4F42]">
+          <Users className="w-3.5 h-3.5 text-[#C66B4D]" /> Profissionais:
+        </span>
+        <button
+          type="button"
+          onClick={() => setProfFilter([])}
+          className={cn(
+            'text-xs px-3 py-1 rounded-full border transition-colors',
+            profFilter.length === 0
+              ? 'bg-[#C66B4D] text-white border-[#C66B4D] font-semibold'
+              : 'bg-white text-[#6B4F42] border-[#EDE3D8] hover:bg-[#FFF3D6]',
+          )}
+        >
+          Todos
+        </button>
+        {professionalOptions.map((p) => {
+          const on = profFilter.includes(p.id)
+          return (
+            <button
+              key={p.id}
+              type="button"
+              onClick={() => toggleProfFilter(p.id)}
+              className={cn(
+                'text-xs px-3 py-1 rounded-full border transition-colors flex items-center gap-1',
+                on
+                  ? 'bg-[#C66B4D] text-white border-[#C66B4D] font-semibold'
+                  : 'bg-white text-[#6B4F42] border-[#EDE3D8] hover:bg-[#FFF3D6]',
+              )}
+            >
+              {on && <Check className="w-3 h-3" />}
+              {p.name}
+            </button>
+          )
+        })}
+        {profFilter.length > 0 && (
+          <span className="text-[10px] text-[#6B4F42]">
+            {profFilter.length}{' '}
+            {profFilter.length === 1 ? 'profissional selecionado' : 'profissionais selecionados'}
+          </span>
+        )}
+      </div>
+
+      {/* Indicadores de comparecimento — visível nas duas abas (já chegam filtrados) */}
+      <AttendanceIndicatorsPanel appointments={visibleAppointments} />
 
       {activeTab === 'calendar' && viewMode === 'grade' ? (
         <CalendarGrid
-          appointments={appointments}
+          appointments={visibleAppointments}
           professionals={professionalOptions}
+          selectedProfessionalIds={profFilter}
           onCreateAt={handleCreateAt}
           onStatusSelect={handleStatusSelect}
           onRequestCancel={(app, kind) => setCancelTarget({ app, kind })}
@@ -439,7 +504,7 @@ export default function Agenda() {
           </CardHeader>
           <CardContent className="pt-4">
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-              {appointments.map((app) => {
+              {visibleAppointments.map((app) => {
                 const rescheduledHistory = app.reschedule_history || []
                 const linkedOriginal = app.rescheduled_from
                 return (

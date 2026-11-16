@@ -101,6 +101,8 @@ function isSameDay(a: Date, b: Date): boolean {
 interface Props {
   appointments: AppointmentRecord[]
   professionals: { id: string; name: string; specialty?: string }[]
+  /** Profissionais selecionados no filtro multi-seleção (vazio = Todos). */
+  selectedProfessionalIds?: string[]
   initialPeriod?: GridPeriod
   initialDate?: string
   onCreateAt: (opts: { date: string; time: string; professionalId: string }) => void
@@ -114,6 +116,7 @@ interface Props {
 export default function CalendarGrid({
   appointments,
   professionals,
+  selectedProfessionalIds = [],
   initialPeriod = 'day',
   initialDate,
   onCreateAt,
@@ -247,11 +250,17 @@ export default function CalendarGrid({
     }
   }
 
-  /** Colunas de profissionais na visão dia — sempre pelo menos uma ("Sem profissional"). */
+  /**
+   * Colunas de profissionais na visão dia — respeita o filtro multi-seleção
+   * (com seleção, só entram as colunas dos escolhidos; sem seleção, todas).
+   * Sem profissionais cadastrados, cai numa coluna única "Sem profissional".
+   */
   const cols =
     period === 'day'
       ? professionals.length > 0
-        ? professionals
+        ? selectedProfessionalIds.length > 0
+          ? professionals.filter((p) => selectedProfessionalIds.includes(p.id))
+          : professionals
         : [{ id: '', name: 'Sem profissional' }]
       : []
 

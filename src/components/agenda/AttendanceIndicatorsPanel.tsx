@@ -9,32 +9,24 @@ const pct = (v: number | null) => (v == null ? '—' : `${(v * 100).toFixed(1).r
 
 /**
  * Indicadores de comparecimento da agenda: agendados, confirmados, atendidos, faltas,
- * desmarcações (clínica/paciente) e remarcações — com filtros por profissional, dia,
- * semana e mês. Denominadores das taxas exibidos explicitamente.
+ * desmarcações (clínica/paciente) e remarcações — com filtros por dia, semana e mês
+ * (o filtro por profissional é feito na Agenda.tsx, antes de chegar aqui).
+ * Denominadores das taxas exibidos explicitamente.
  */
 export default function AttendanceIndicatorsPanel({
   appointments,
-  professionals,
 }: {
   appointments: AppointmentRecord[]
-  professionals: { id: string; name: string }[]
 }) {
   const todayISO = new Date().toISOString().slice(0, 10)
   const [period, setPeriod] = useState<PeriodFilter>('day')
   const [refDate, setRefDate] = useState(todayISO)
-  const [professional, setProfessional] = useState('todos')
 
-  const filtered = useMemo(() => {
-    const byPeriod = filterByPeriod(appointments, period, refDate)
-    if (professional === 'todos') return byPeriod
-    return byPeriod.filter((a) => a.professional === professional)
-  }, [appointments, period, refDate, professional])
-
-  const ind = computeIndicators(filtered)
-
-  const proOptions = useMemo(
-    () => professionals.map((p) => ({ id: p.id, name: p.name || 'Sem nome' })),
-    [professionals],
+  // O filtro de profissional é feito na Agenda.tsx (multi-seleção) e chega
+  // já aplicado no array `appointments` deste painel.
+  const ind = useMemo(
+    () => computeIndicators(filterByPeriod(appointments, period, refDate)),
+    [appointments, period, refDate],
   )
 
   const cards: { label: string; value: string | number; tone: string }[] = [
@@ -102,21 +94,6 @@ export default function AttendanceIndicatorsPanel({
                 onChange={(e) => setRefDate(e.target.value)}
                 className="h-8 text-xs w-36"
               />
-            </div>
-            <div className="space-y-0.5">
-              <Label className="text-[10px] text-[#6B4F42]">Profissional</Label>
-              <select
-                value={professional}
-                onChange={(e) => setProfessional(e.target.value)}
-                className="h-8 text-xs rounded-md border border-[#EDE3D8] bg-white px-2"
-              >
-                <option value="todos">Todos</option>
-                {proOptions.map((p) => (
-                  <option key={p.id} value={p.id}>
-                    {p.name}
-                  </option>
-                ))}
-              </select>
             </div>
           </div>
         </div>
