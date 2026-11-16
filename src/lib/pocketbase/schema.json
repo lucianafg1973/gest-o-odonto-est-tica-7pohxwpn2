@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2026-11-15T22:25:35.043Z",
+  "generatedAt": "2026-11-16T00:20:10.708Z",
   "collections": [
     {
       "name": "users",
@@ -1836,6 +1836,198 @@
         }
       ],
       "indexes": ["CREATE UNIQUE INDEX idx_work_schedule_dow ON work_schedule (dow)"]
+    },
+    {
+      "name": "inventory_items",
+      "type": "base",
+      "apiRules": {
+        "list": "@request.auth.id != ''",
+        "view": "@request.auth.id != ''",
+        "create": "@request.auth.id != ''",
+        "update": "@request.auth.id != ''",
+        "delete": null
+      },
+      "fields": [
+        {
+          "name": "name",
+          "type": "text",
+          "required": true,
+          "system": false
+        },
+        {
+          "name": "manufacturer",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "type",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "presentation",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "control_unit",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "quantity",
+          "type": "number",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "batch",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "expiry_date",
+          "type": "date",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "supplier",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "unit_cost",
+          "type": "number",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "min_stock",
+          "type": "number",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "storage_location",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "active",
+          "type": "bool",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "created",
+          "type": "autodate",
+          "required": false,
+          "system": false,
+          "autodateTriggers": ["onCreate"]
+        },
+        {
+          "name": "updated",
+          "type": "autodate",
+          "required": false,
+          "system": false,
+          "autodateTriggers": ["onCreate", "onUpdate"]
+        }
+      ],
+      "indexes": [
+        "CREATE INDEX idx_inventory_items_name ON inventory_items (name)",
+        "CREATE INDEX idx_inventory_items_expiry ON inventory_items (expiry_date)"
+      ]
+    },
+    {
+      "name": "inventory_movements",
+      "type": "base",
+      "apiRules": {
+        "list": "@request.auth.id != ''",
+        "view": "@request.auth.id != ''",
+        "create": "@request.auth.id != ''",
+        "update": null,
+        "delete": null
+      },
+      "fields": [
+        {
+          "name": "item",
+          "type": "relation",
+          "required": true,
+          "system": false,
+          "collectionRef": "inventory_items"
+        },
+        {
+          "name": "type",
+          "type": "select",
+          "required": true,
+          "system": false,
+          "selectValues": ["entrada", "saida", "ajuste", "estorno"]
+        },
+        {
+          "name": "quantity",
+          "type": "number",
+          "required": true,
+          "system": false
+        },
+        {
+          "name": "batch",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "responsible",
+          "type": "relation",
+          "required": false,
+          "system": false,
+          "collectionRef": "users"
+        },
+        {
+          "name": "responsible_name",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "note",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "created",
+          "type": "autodate",
+          "required": false,
+          "system": false,
+          "autodateTriggers": ["onCreate"]
+        },
+        {
+          "name": "updated",
+          "type": "autodate",
+          "required": false,
+          "system": false,
+          "autodateTriggers": ["onCreate", "onUpdate"]
+        },
+        {
+          "name": "reverses",
+          "type": "relation",
+          "required": false,
+          "system": false,
+          "collectionRef": "inventory_movements"
+        }
+      ],
+      "indexes": [
+        "CREATE INDEX idx_inv_mov_item_created ON inventory_movements (item, created DESC)",
+        "CREATE INDEX idx_inv_mov_type ON inventory_movements (type)"
+      ]
     }
   ]
 }

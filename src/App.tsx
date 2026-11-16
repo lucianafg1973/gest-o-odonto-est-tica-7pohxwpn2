@@ -23,6 +23,7 @@ import BancoImplantes from './pages/BancoImplantes'
 import Configuracoes from './pages/Configuracoes'
 import TabelaPrecos from './pages/TabelaPrecos'
 import Financial from './pages/Financial'
+import Estoque from './pages/Estoque'
 
 const App = () => (
   <BrowserRouter>
@@ -49,6 +50,7 @@ const App = () => (
               <Route path="/banco-implantes" element={<BancoImplantes />} />
               <Route path="/tabela-precos" element={<TabelaPrecos />} />
               <Route path="/financeiro" element={<Financial />} />
+              <Route path="/estoque" element={<Estoque />} />
               <Route path="/configuracoes" element={<Configuracoes />} />
             </Route>
           </Route>
