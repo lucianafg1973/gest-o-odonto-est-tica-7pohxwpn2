@@ -23,6 +23,8 @@ import {
   ChevronDown,
 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
+import PatientAutocomplete from '@/components/agenda/PatientAutocomplete'
+import QuickPatientDialog from '@/components/agenda/QuickPatientDialog'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import {
   Dialog,
@@ -83,6 +85,9 @@ export default function Agenda() {
   const [startTime, setStartTime] = useState('09:00')
   const [notes, setNotes] = useState('')
   const [endTime, setEndTime] = useState('09:40')
+  // cadastro rápido de paciente novo dentro do fluxo de agendamento
+  const [quickPatientOpen, setQuickPatientOpen] = useState(false)
+  const [quickPatientName, setQuickPatientName] = useState('')
 
   // dialogs
   // Filtro de profissionais (multi-seleção): vazio = Todos.
@@ -425,15 +430,6 @@ export default function Agenda() {
               </Button>
             </div>
           )}
-          <Button
-            className="btn-terracotta-gold text-xs font-semibold"
-            onClick={() => {
-              setPendingSlot(null)
-              setOpenModal(true)
-            }}
-          >
-            <Plus className="w-4 h-4 mr-1" /> Nova Consulta
-          </Button>
         </div>
       </div>
 
@@ -730,18 +726,15 @@ export default function Agenda() {
           <form onSubmit={handleCreateAppointment} className="space-y-4 py-2">
             <div className="space-y-1">
               <Label className="text-xs font-semibold">Paciente</Label>
-              <Select value={selectedPatient} onValueChange={setSelectedPatient}>
-                <SelectTrigger className="bg-[#FFFDF9] border-[#EDE3D8]">
-                  <SelectValue placeholder="Selecione o paciente" />
-                </SelectTrigger>
-                <SelectContent>
-                  {patients.map((p) => (
-                    <SelectItem key={p.id} value={p.id}>
-                      {p.name}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
+              <PatientAutocomplete
+                patients={patients}
+                value={patients.find((p) => p.id === selectedPatient) || null}
+                onSelect={(p) => setSelectedPatient(p.id)}
+                onCreateNew={(name) => {
+                  setQuickPatientName(name)
+                  setQuickPatientOpen(true)
+                }}
+              />
             </div>
 
             <div className="space-y-1">
@@ -864,6 +857,20 @@ export default function Agenda() {
           </form>
         </DialogContent>
       </Dialog>
+
+      <QuickPatientDialog
+        open={quickPatientOpen}
+        onOpenChange={setQuickPatientOpen}
+        initialName={quickPatientName}
+        onCreated={(p) => {
+          setPatients((prev) =>
+            prev.some((x) => x.id === p.id)
+              ? prev
+              : [...prev, p].sort((a, b) => a.name.localeCompare(b.name)),
+          )
+          setSelectedPatient(p.id)
+        }}
+      />
     </div>
   )
 }
