@@ -3,6 +3,7 @@ import { useRealtime } from '@/hooks/use-realtime'
 import { getLeads, createLead, updateLead, LeadRecord } from '@/services/leads'
 import { getProfessionals, ProfessionalRecord } from '@/services/professionals'
 import { Plus, Phone, MessageCircle, Clock, Filter } from 'lucide-react'
+import LeadsPlanilha from '@/components/leads/LeadsPlanilha'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import {
@@ -202,6 +203,8 @@ export default function Leads() {
           </div>
         </CardContent>
       </Card>
+
+      <LeadsPlanilha />
 
       <Dialog open={openModal} onOpenChange={setOpenModal}>
         <DialogContent className="max-w-md bg-white border-[#EDE3D8]">

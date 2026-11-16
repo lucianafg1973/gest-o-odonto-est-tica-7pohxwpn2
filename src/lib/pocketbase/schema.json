@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2026-11-16T22:32:50.514Z",
+  "generatedAt": "2026-11-16T23:27:40.613Z",
   "collections": [
     {
       "name": "users",
@@ -1202,6 +1202,24 @@
           "required": false,
           "system": false,
           "autodateTriggers": ["onCreate", "onUpdate"]
+        },
+        {
+          "name": "plan_value",
+          "type": "number",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "closed_value",
+          "type": "number",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "feedback",
+          "type": "text",
+          "required": false,
+          "system": false
         }
       ],
       "indexes": [
@@ -2112,6 +2130,89 @@
         }
       ],
       "indexes": ["CREATE INDEX idx_camp_msg_patient ON campaign_messages (patient, sent_at DESC)"]
+    },
+    {
+      "name": "lead_evaluations",
+      "type": "base",
+      "apiRules": {
+        "list": "@request.auth.id != ''",
+        "view": "@request.auth.id != ''",
+        "create": "@request.auth.id != ''",
+        "update": "@request.auth.id != ''",
+        "delete": "@request.auth.id != ''"
+      },
+      "fields": [
+        {
+          "name": "lead",
+          "type": "relation",
+          "required": false,
+          "system": false,
+          "collectionRef": "leads"
+        },
+        {
+          "name": "patient",
+          "type": "relation",
+          "required": false,
+          "system": false,
+          "collectionRef": "patients"
+        },
+        {
+          "name": "professional",
+          "type": "relation",
+          "required": false,
+          "system": false,
+          "collectionRef": "professionals"
+        },
+        {
+          "name": "evaluation_date",
+          "type": "date",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "plan_value",
+          "type": "number",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "closed_value",
+          "type": "number",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "feedback",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "next_contact_date",
+          "type": "date",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "created",
+          "type": "autodate",
+          "required": false,
+          "system": false,
+          "autodateTriggers": ["onCreate"]
+        },
+        {
+          "name": "updated",
+          "type": "autodate",
+          "required": false,
+          "system": false,
+          "autodateTriggers": ["onCreate", "onUpdate"]
+        }
+      ],
+      "indexes": [
+        "CREATE INDEX idx_lead_eval_lead ON lead_evaluations (lead)",
+        "CREATE INDEX idx_lead_eval_patient ON lead_evaluations (patient)",
+        "CREATE INDEX idx_lead_eval_date ON lead_evaluations (evaluation_date)"
+      ]
     }
   ]
 }
