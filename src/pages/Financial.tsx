@@ -210,11 +210,7 @@ export default function Financial() {
       )}
 
       {secao === 'campanhas' && (
-        <CampaignSimulator
-          procedures={procedures}
-          horaClinica={horaClinica}
-          onClose={() => setSecao('visao')}
-        />
+        <CampaignSimulator procedures={procedures} onClose={() => setSecao('visao')} />
       )}
 
       {secao === 'indicadores' && (

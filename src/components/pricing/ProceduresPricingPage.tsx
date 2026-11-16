@@ -236,7 +236,7 @@ export default function ProceduresPricingPage({ procedures, horaClinica, onReloa
     const base = Array.from(
       new Set(
         [
-          ...(FAMILY_SUGGESTIONS as readonly string[]),
+          ...Object.values(FAMILY_SUGGESTIONS).flat(),
           ...procedures.filter((p) => p.specialty === proc.specialty).map((p) => p.family),
         ].filter(Boolean) as string[],
       ),

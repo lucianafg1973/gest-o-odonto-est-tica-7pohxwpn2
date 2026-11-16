@@ -288,7 +288,7 @@ function opcoesEspecialidade(procedure: ProcedureRecord): string[] {
 }
 
 function opcoesFamilia(procedure: ProcedureRecord): string[] {
-  const base = Array.from(new Set(FAMILY_SUGGESTIONS as readonly string[]))
+  const base = Array.from(new Set(Object.values(FAMILY_SUGGESTIONS).flat() as readonly string[]))
   if (procedure.family && !base.includes(procedure.family)) base.push(procedure.family)
   return base.sort((a, b) => a.localeCompare(b, 'pt-BR'))
 }

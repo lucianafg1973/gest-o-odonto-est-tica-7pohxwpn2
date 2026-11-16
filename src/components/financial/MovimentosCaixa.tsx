@@ -435,7 +435,10 @@ function DespesaDialog({
           </div>
           <div>
             <Label className="text-xs font-semibold">Status</Label>
-            <Select value={status} onValueChange={setStatus}>
+            <Select
+              value={status}
+              onValueChange={(v) => setStatus(v as 'pago' | 'pendente' | 'cancelado')}
+            >
               <SelectTrigger className="text-xs bg-[#FFFDF9] border-[#EDE3D8]">
                 <SelectValue />
               </SelectTrigger>

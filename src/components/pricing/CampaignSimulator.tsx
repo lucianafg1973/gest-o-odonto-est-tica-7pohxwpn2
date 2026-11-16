@@ -16,31 +16,45 @@ import {
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
 import { Checkbox } from '@/components/ui/checkbox'
-import { Loader2, Sparkles, Send, Check, Search } from 'lucide-react'
+import {
+  Loader2,
+  Sparkles,
+  Send,
+  Check,
+  Copy,
+  MessageSquare,
+  Image as ImageIcon,
+  Megaphone,
+} from 'lucide-react'
 import { formatCurrency } from '@/lib/price-calculation'
 import { PatientRecord, getPatients } from '@/services/patients'
+import { AppointmentRecord, getAppointments } from '@/services/appointments'
 import { openWhatsApp } from '@/lib/whatsapp'
 import { getProcedures, ProcedureRecord } from '@/services/procedures'
+import {
+  SugestoesIA,
+  SUGESTOES_VAZIAS,
+  gerarSugestoes,
+  copiarTexto,
+} from '@/components/pricing/campaign-creative'
+import CampaignSegmentacao from '@/components/pricing/CampaignSegmentacao'
 
 /**
- * Simulador de Campanha — criativo com IA (agente nativo Skip Cloud) e envio
- * de WhatsApp por paciente com revisão obrigatória e registro manual de envio.
+ * Simulador de Campanha — criativos com IA (agente nativo Skip Cloud) e envio
+ * de WhatsApp por paciente com segmentação, revisão obrigatória e registro
+ * manual de envio.
  *
  * - IA: rota nativa /backend/v1/ai/campaign/creative (pb_hooks + agente nativo
- *   'criativo-campanhas') — produz apenas uma PROPOSTA editável; nada é
- *   publicado automaticamente.
- * - WhatsApp: texto montado por paciente, aberto para revisão; o registro
- *   "mensagem enviada" só existe após confirmação manual da usuária
- *   (coleção campaign_messages), com data e usuário.
- * - LGPD: só entram na lista pacientes com comm_pref marcando aceitação
- *   explícita de comunicações (ver aceitoComercial).
+ *   'criativo-campanhas') — devolve MÚLTIPLAS opções (textos de WhatsApp,
+ *   criativos visuais e posts), todas como PROPOSTA editável; nada é publicado
+ *   ou enviado automaticamente.
+ * - Ao escolher um texto/post, abre a SEGMENTAÇÃO (sexo, idade, consentimento,
+ *   último atendimento), a lista pré-envio com OK final e exclusão individual
+ *   (só daquele envio), e o WhatsApp abre um por vez para revisão.
+ * - Registro "mensagem enviada": coleção campaign_messages, só após
+ *   confirmação manual da usuária, com data e usuário.
+ * - LGPD: comm_pref === 'liberado' marca autorização de comunicações.
  */
-
-interface PatientTarget {
-  patient: PatientRecord
-  proc: ProcedureRecord | null
-  message: string
-}
 
 interface CampaignMessageRecord {
   id: string
@@ -49,14 +63,10 @@ interface CampaignMessageRecord {
   message: string
   sent_at: string
   sent_by: string
+  sent_by_name?: string
 }
 
-const aceitoComercial = (p: PatientRecord): boolean => {
-  const pref = (p as any).comm_pref
-  if (!pref) return false
-  const txt = String(pref).toLowerCase()
-  return txt.includes('comercial') || txt.includes('promo') || txt.includes('tudo')
-}
+const commLiberado = (p: PatientRecord): boolean => (p as any).comm_pref === 'liberado'
 
 const primeiroNome = (p: PatientRecord) => (p.name || '').trim().split(/\s+/)[0] || 'cliente'
 
@@ -66,7 +76,13 @@ const dataBR = (iso?: string) => {
   return `${d}/${m}/${y}`
 }
 
-export default function CampaignSimulator({ procedures }: { procedures: ProcedureRecord[] }) {
+export default function CampaignSimulator({
+  procedures,
+  onClose,
+}: {
+  procedures: ProcedureRecord[]
+  onClose?: () => void
+}) {
   const { user } = useAuth()
   const { toast } = useToast()
 
@@ -79,28 +95,32 @@ export default function CampaignSimulator({ procedures }: { procedures: Procedur
   )
   const [targetProcedures, setTargetProcedures] = useState<string[]>([])
   const [patients, setPatients] = useState<PatientRecord[]>([])
+  const [appointments, setAppointments] = useState<AppointmentRecord[]>([])
   const [sentMessages, setSentMessages] = useState<CampaignMessageRecord[]>([])
 
+  // Sugestões da IA (múltiplas, todas editáveis)
   const [criativoOpen, setCriativoOpen] = useState(false)
   const [criativoLoading, setCriativoLoading] = useState(false)
-  const [criativoText, setCriativoText] = useState('')
+  const [sugestoes, setSugestoes] = useState<SugestoesIA>(SUGESTOES_VAZIAS)
+  const [conversationId, setConversationId] = useState<string | null>(null)
+  const [copiado, setCopiado] = useState<string | null>(null)
 
-  const [waOpen, setWaOpen] = useState(false)
-  const [targets, setTargets] = useState<PatientTarget[]>([])
-  const [waSearch, setWaSearch] = useState('')
-  const [selected, setSelected] = useState<Record<string, boolean>>({})
-  const [confirming, setConfirming] = useState<string | null>(null)
+  // Segmentação + lista pré-envio
+  const [segOpen, setSegOpen] = useState(false)
+  const [textoFixo, setTextoFixo] = useState('')
 
   useEffect(() => {
     const load = async () => {
       try {
-        const [pats, msgs] = await Promise.all([
+        const [pats, aps, msgs] = await Promise.all([
           getPatients(),
+          getAppointments().catch(() => [] as AppointmentRecord[]),
           pb.collection('campaign_messages').getFullList<CampaignMessageRecord>({
             sort: '-sent_at',
           }),
         ])
         setPatients(pats)
+        setAppointments(aps)
         setSentMessages(msgs)
       } catch {
         /* silencioso: coleção campaign_messages pode não existir ainda */
@@ -118,11 +138,11 @@ export default function CampaignSimulator({ procedures }: { procedures: Procedur
     return map
   }, [sentMessages])
 
-  const elegiveis = useMemo(
-    () => patients.filter((p) => aceitoComercial(p) && (p.phone || '').trim() !== ''),
+  const liberados = useMemo(
+    () => patients.filter((p) => commLiberado(p) && (p.phone || '').trim() !== ''),
     [patients],
   )
-  const bloqueados = patients.length - elegiveis.length
+  const bloqueados = patients.length - liberados.length
 
   const alvo = useMemo(() => {
     if (targetProcedures.length === 0) return null
@@ -140,7 +160,7 @@ export default function CampaignSimulator({ procedures }: { procedures: Procedur
     }
     setCriativoOpen(true)
     setCriativoLoading(true)
-    setCriativoText('')
+    setSugestoes(SUGESTOES_VAZIAS)
     try {
       const briefing = [
         `Campanha: ${name.trim()}`,
@@ -154,17 +174,16 @@ export default function CampaignSimulator({ procedures }: { procedures: Procedur
       ]
         .filter(Boolean)
         .join('\n')
-      // Rota nativa do pb_hooks campaign_creative (agente 'criativo-campanhas').
-      const body = await pb.send<{ content: string }>('/backend/v1/ai/campaign/creative', {
-        method: 'POST',
-        body: JSON.stringify({ briefing }),
-        headers: { 'Content-Type': 'application/json' },
+      const res = await gerarSugestoes(briefing, conversationId)
+      setSugestoes(res.sugestoes)
+      setConversationId(res.conversation_id)
+      toast({
+        title: 'Sugestões geradas!',
+        description: 'Várias opções prontas — edite a que escolher antes de usar.',
       })
-      setCriativoText(body.content || '')
-      toast({ title: 'Criativo gerado!', description: 'Edite o texto antes de usar.' })
     } catch (e: any) {
       toast({
-        title: 'Não foi possível gerar o criativo',
+        title: 'Não foi possível gerar os criativos',
         description: e?.message || 'Tente novamente.',
         variant: 'destructive',
       })
@@ -174,16 +193,20 @@ export default function CampaignSimulator({ procedures }: { procedures: Procedur
     }
   }
 
-  const copiarCriativo = async () => {
-    try {
-      await navigator.clipboard.writeText(criativoText)
+  const copiar = async (texto: string, chave: string) => {
+    const ok = await copiarTexto(texto)
+    if (ok) {
+      setCopiado(chave)
       toast({ title: 'Texto copiado!' })
-    } catch {
+      setTimeout(() => setCopiado(null), 2000)
+    } else {
       toast({ title: 'Não foi possível copiar', variant: 'destructive' })
     }
   }
 
   const montarMensagem = (p: PatientRecord): string => {
+    // Texto escolhido da IA (post/texto) tem prioridade — editável por paciente.
+    if (textoFixo.trim()) return textoFixo
     const nomeProc = alvo?.name || 'nosso tratamento especial'
     const linhas = [
       `Olá, ${primeiroNome(p)}!`,
@@ -198,75 +221,31 @@ export default function CampaignSimulator({ procedures }: { procedures: Procedur
     return linhas.filter((l) => l !== '').join('\n')
   }
 
-  const abrirWhatsApp = () => {
-    const escolhidos = targets.filter((t) => selected[t.patient.id])
-    if (escolhidos.length === 0) {
-      toast({ title: 'Selecione pelo menos um paciente', variant: 'destructive' })
-      return
-    }
-    if (escolhidos.length > 1) {
-      // abre o primeiro para revisão; os demais ficam na fila da lista
-      toast({
-        title: 'Revisão individual',
-        description:
-          'A mensagem abre uma por vez para revisão. Revise e confirme o envio de cada uma.',
-      })
-    }
-    const primeiro = escolhidos[0]
-    openWhatsApp(primeiro.patient.phone || '', primeiro.message)
+  /** Registro manual "mensagem enviada" (coleção campaign_messages). */
+  const registrarEnvio = async (p: PatientRecord, message: string) => {
+    const rec = await pb.collection('campaign_messages').create<CampaignMessageRecord>({
+      campaign: name || 'campanha',
+      patient: p.id,
+      message,
+      sent_at: new Date().toISOString(),
+      sent_by: user?.id || '',
+      sent_by_name: user?.name || '',
+    })
+    setSentMessages((prev) => [rec, ...prev])
+    toast({
+      title: 'Envio registrado',
+      description: `${p.name} • ${new Date().toLocaleDateString('pt-BR')}`,
+    })
   }
 
-  const registrarEnvio = async (t: PatientTarget) => {
-    setConfirming(t.patient.id)
-    try {
-      const rec = await pb.collection('campaign_messages').create<CampaignMessageRecord>({
-        campaign: name || 'campanha',
-        patient: t.patient.id,
-        message: t.message,
-        sent_at: new Date().toISOString(),
-        sent_by: user?.id || '',
-      })
-      setSentMessages((prev) => [rec, ...prev])
-      setTargets((prev) => prev.filter((x) => x.patient.id !== t.patient.id))
-      setSelected((prev) => {
-        const n = { ...prev }
-        delete n[t.patient.id]
-        return n
-      })
-      toast({
-        title: 'Envio registrado',
-        description: `${t.patient.name} • ${new Date().toLocaleDateString('pt-BR')}`,
-      })
-    } catch {
-      toast({ title: 'Erro ao registrar envio', variant: 'destructive' })
-    } finally {
-      setConfirming(null)
-    }
+  /** Abre a segmentação com o texto escolhido (do post/texto da IA) ou padrão. */
+  const escolherEEnviar = (texto: string) => {
+    setTextoFixo(texto.trim())
+    setSegOpen(true)
   }
 
-  const abrirLista = () => {
-    if (elegiveis.length === 0) {
-      toast({
-        title: 'Nenhum paciente elegível',
-        description: 'Só entram pacientes com telefone e consentimento de comunicações (LGPD).',
-        variant: 'destructive',
-      })
-      return
-    }
-    setTargets(
-      elegiveis.map((p) => ({
-        patient: p,
-        proc: alvo,
-        message: montarMensagem(p),
-      })),
-    )
-    setSelected({})
-    setWaOpen(true)
-  }
-
-  const filtrados = targets.filter((t) =>
-    t.patient.name.toLowerCase().includes(waSearch.toLowerCase()),
-  )
+  const totalSugestoes =
+    sugestoes.textos.length + sugestoes.criativos.length + sugestoes.posts.length
 
   return (
     <div className="space-y-4">
@@ -355,9 +334,9 @@ export default function CampaignSimulator({ procedures }: { procedures: Procedur
               onClick={gerarCriativo}
             >
               <Sparkles className="h-3.5 w-3.5 mr-1" />
-              Criativo com IA (editável)
+              Criativos com IA (vários, editáveis)
             </Button>
-            <Button className="btn-terracotta-gold" onClick={abrirLista}>
+            <Button className="btn-terracotta-gold" onClick={() => escolherEEnviar('')}>
               <Send className="h-3.5 w-3.5 mr-1" />
               WhatsApp p/ clientes
             </Button>
@@ -365,139 +344,257 @@ export default function CampaignSimulator({ procedures }: { procedures: Procedur
         </CardContent>
       </Card>
 
-      {/* Diálogo do criativo de IA — proposta EDITÁVEL */}
+      {/* Diálogo das sugestões da IA — MÚLTIPLAS opções EDITÁVEIS */}
       <Dialog open={criativoOpen} onOpenChange={setCriativoOpen}>
-        <DialogContent className="max-w-lg bg-white border-[#EDE3D8]">
+        <DialogContent className="max-w-2xl bg-white border-[#EDE3D8] max-h-[85vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle className="font-serif-title text-[#2D1B14]">
-              Criativo com IA (editável)
+              Sugestões da IA (editáveis)
             </DialogTitle>
             <DialogDescription className="text-xs text-[#6B4F42]">
-              Proposta gerada pela IA — edite à vontade. Nada é publicado automaticamente.
+              Textos de WhatsApp, criativos e posts propostos pela IA. Edite à vontade, escolha um e
+              siga para a segmentação. <strong>Nada é enviado automaticamente.</strong>
             </DialogDescription>
           </DialogHeader>
           {criativoLoading ? (
             <div className="flex items-center justify-center py-10">
               <Loader2 className="h-6 w-6 animate-spin text-[#C66B4D]" />
-              <span className="ml-3 text-sm text-[#6B4F42]">Gerando criativo…</span>
+              <span className="ml-3 text-sm text-[#6B4F42]">Gerando sugestões…</span>
             </div>
           ) : (
-            <div className="space-y-3">
-              <Textarea
-                value={criativoText}
-                onChange={(e) => setCriativoText(e.target.value)}
-                className="min-h-56 bg-[#FFFDF9] border-[#EDE3D8] text-sm"
-              />
-              <div className="flex justify-end gap-2">
-                <Button variant="outline" onClick={copiarCriativo}>
-                  Copiar texto
-                </Button>
-                <Button className="btn-terracotta-gold" onClick={() => setCriativoOpen(false)}>
-                  Concluir
-                </Button>
-              </div>
+            <div className="space-y-4">
+              {totalSugestoes === 0 && (
+                <p className="text-xs text-[#6B4F42] py-4 text-center">
+                  Sem sugestões. Feche e tente gerar novamente.
+                </p>
+              )}
+
+              {/* ---- Textos de WhatsApp ---- */}
+              {sugestoes.textos.length > 0 && (
+                <section className="space-y-2">
+                  <h4 className="text-xs font-bold text-[#2D1B14] flex items-center gap-1.5">
+                    <MessageSquare className="h-3.5 w-3.5 text-[#C66B4D]" /> Textos para WhatsApp (
+                    {sugestoes.textos.length})
+                  </h4>
+                  {sugestoes.textos.map((t, idx) => (
+                    <div
+                      key={t.id}
+                      className="border border-[#EDE3D8] rounded-lg p-2.5 bg-[#FAF6F0] space-y-1.5"
+                    >
+                      <Input
+                        value={t.titulo}
+                        onChange={(e) =>
+                          setSugestoes((prev) => ({
+                            ...prev,
+                            textos: prev.textos.map((x, i) =>
+                              i === idx ? { ...x, titulo: e.target.value } : x,
+                            ),
+                          }))
+                        }
+                        className="text-xs font-semibold bg-white border-[#EDE3D8]"
+                        placeholder="Título"
+                      />
+                      <Textarea
+                        value={t.texto}
+                        onChange={(e) =>
+                          setSugestoes((prev) => ({
+                            ...prev,
+                            textos: prev.textos.map((x, i) =>
+                              i === idx ? { ...x, texto: e.target.value } : x,
+                            ),
+                          }))
+                        }
+                        className="min-h-20 bg-white border-[#EDE3D8] text-xs"
+                      />
+                      <div className="flex gap-1.5">
+                        <Button
+                          size="sm"
+                          className="btn-terracotta-gold text-xs"
+                          onClick={() => escolherEEnviar(t.texto)}
+                        >
+                          <Send className="h-3 w-3 mr-1" /> Escolher e segmentar
+                        </Button>
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          className="text-xs"
+                          onClick={() => copiar(t.texto, t.id)}
+                        >
+                          <Copy className="h-3 w-3 mr-1" />
+                          {copiado === t.id ? 'Copiado!' : 'Copiar'}
+                        </Button>
+                      </div>
+                    </div>
+                  ))}
+                </section>
+              )}
+
+              {/* ---- Criativos visuais ---- */}
+              {sugestoes.criativos.length > 0 && (
+                <section className="space-y-2">
+                  <h4 className="text-xs font-bold text-[#2D1B14] flex items-center gap-1.5">
+                    <ImageIcon className="h-3.5 w-3.5 text-[#C66B4D]" /> Criativos visuais (
+                    {sugestoes.criativos.length})
+                  </h4>
+                  {sugestoes.criativos.map((c, idx) => (
+                    <div
+                      key={c.id}
+                      className="border border-[#EDE3D8] rounded-lg p-2.5 bg-[#FAF6F0] space-y-1.5"
+                    >
+                      <Input
+                        value={c.titulo}
+                        onChange={(e) =>
+                          setSugestoes((prev) => ({
+                            ...prev,
+                            criativos: prev.criativos.map((x, i) =>
+                              i === idx ? { ...x, titulo: e.target.value } : x,
+                            ),
+                          }))
+                        }
+                        className="text-xs font-semibold bg-white border-[#EDE3D8]"
+                        placeholder="Título"
+                      />
+                      <Textarea
+                        value={c.descricao}
+                        onChange={(e) =>
+                          setSugestoes((prev) => ({
+                            ...prev,
+                            criativos: prev.criativos.map((x, i) =>
+                              i === idx ? { ...x, descricao: e.target.value } : x,
+                            ),
+                          }))
+                        }
+                        className="min-h-16 bg-white border-[#EDE3D8] text-xs"
+                        placeholder="Descrição do criativo (imagem, paleta, estilo)"
+                      />
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        className="text-xs"
+                        onClick={() => copiar(`${c.titulo}\n${c.descricao}`, c.id)}
+                      >
+                        <Copy className="h-3 w-3 mr-1" />
+                        {copiado === c.id ? 'Copiado!' : 'Copiar p/ designer'}
+                      </Button>
+                    </div>
+                  ))}
+                </section>
+              )}
+
+              {/* ---- Posts de redes sociais ---- */}
+              {sugestoes.posts.length > 0 && (
+                <section className="space-y-2">
+                  <h4 className="text-xs font-bold text-[#2D1B14] flex items-center gap-1.5">
+                    <Megaphone className="h-3.5 w-3.5 text-[#C66B4D]" /> Posts de redes sociais (
+                    {sugestoes.posts.length})
+                  </h4>
+                  {sugestoes.posts.map((p, idx) => (
+                    <div
+                      key={p.id}
+                      className="border border-[#EDE3D8] rounded-lg p-2.5 bg-[#FAF6F0] space-y-1.5"
+                    >
+                      <div className="flex gap-1.5">
+                        <Input
+                          value={p.titulo}
+                          onChange={(e) =>
+                            setSugestoes((prev) => ({
+                              ...prev,
+                              posts: prev.posts.map((x, i) =>
+                                i === idx ? { ...x, titulo: e.target.value } : x,
+                              ),
+                            }))
+                          }
+                          className="text-xs font-semibold bg-white border-[#EDE3D8]"
+                          placeholder="Título"
+                        />
+                        <Input
+                          value={p.hashtags}
+                          onChange={(e) =>
+                            setSugestoes((prev) => ({
+                              ...prev,
+                              posts: prev.posts.map((x, i) =>
+                                i === idx ? { ...x, hashtags: e.target.value } : x,
+                              ),
+                            }))
+                          }
+                          className="text-xs bg-white border-[#EDE3D8]"
+                          placeholder="#hashtags"
+                        />
+                      </div>
+                      <Textarea
+                        value={p.legenda}
+                        onChange={(e) =>
+                          setSugestoes((prev) => ({
+                            ...prev,
+                            posts: prev.posts.map((x, i) =>
+                              i === idx ? { ...x, legenda: e.target.value } : x,
+                            ),
+                          }))
+                        }
+                        className="min-h-20 bg-white border-[#EDE3D8] text-xs"
+                        placeholder="Legenda do post"
+                      />
+                      <div className="flex gap-1.5">
+                        <Button
+                          size="sm"
+                          className="btn-terracotta-gold text-xs"
+                          onClick={() => escolherEEnviar(p.legenda)}
+                        >
+                          <Send className="h-3 w-3 mr-1" /> Escolher e segmentar
+                        </Button>
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          className="text-xs"
+                          onClick={() => copiar(`${p.legenda}\n\n${p.hashtags}`.trim(), p.id)}
+                        >
+                          <Copy className="h-3 w-3 mr-1" />
+                          {copiado === p.id ? 'Copiado!' : 'Copiar post'}
+                        </Button>
+                      </div>
+                    </div>
+                  ))}
+                </section>
+              )}
             </div>
           )}
         </DialogContent>
       </Dialog>
 
-      {/* Diálogo WhatsApp — revisão antes do envio + registro manual */}
-      <Dialog open={waOpen} onOpenChange={setWaOpen}>
-        <DialogContent className="max-w-2xl bg-white border-[#EDE3D8] max-h-[85vh] overflow-y-auto">
-          <DialogHeader>
-            <DialogTitle className="font-serif-title text-[#2D1B14]">
-              Mensagem de WhatsApp — revisão antes do envio
-            </DialogTitle>
-            <DialogDescription className="text-xs text-[#6B4F42]">
-              Abra a conversa, revise o texto e só depois confirme “mensagem enviada”.{' '}
-              {bloqueados > 0 &&
-                `${bloqueados} paciente(s) fora da lista (sem consentimento de comunicações).`}
-            </DialogDescription>
-          </DialogHeader>
-          <div className="relative">
-            <Search className="absolute left-2 top-2.5 h-4 w-4 text-[#6B4F42]" />
-            <Input
-              value={waSearch}
-              onChange={(e) => setWaSearch(e.target.value)}
-              placeholder="Buscar paciente…"
-              className="pl-8 bg-[#FFFDF9] border-[#EDE3D8]"
-            />
-          </div>
-          <div className="space-y-2">
-            {filtrados.map((t) => {
-              const jaEnviada = sentByPatient[t.patient.id]
+      {/* Segmentação + lista pré-envio com OK final e exclusão individual */}
+      <CampaignSegmentacao
+        open={segOpen}
+        onOpenChange={setSegOpen}
+        patients={patients}
+        appointments={appointments}
+        mensagemPara={montarMensagem}
+        registrarEnvio={registrarEnvio}
+        textoFixo={textoFixo}
+      />
+
+      {/* Resumo dos envios já registrados nesta sessão */}
+      {sentMessages.length > 0 && (
+        <Card className="border-[#EDE3D8]">
+          <CardHeader className="pb-2">
+            <CardTitle className="text-sm font-serif-title text-[#2D1B14] flex items-center gap-2">
+              <Check className="h-4 w-4 text-[#6B8E23]" /> Últimos envios registrados
+            </CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-1.5">
+            {sentMessages.slice(0, 5).map((m) => {
+              const nome = patients.find((p) => p.id === m.patient)?.name || '—'
               return (
-                <div
-                  key={t.patient.id}
-                  className="border border-[#EDE3D8] rounded-lg p-2.5 bg-[#FAF6F0]"
-                >
-                  <div className="flex items-start gap-2">
-                    <Checkbox
-                      checked={!!selected[t.patient.id]}
-                      onCheckedChange={(v) =>
-                        setSelected((prev) => ({ ...prev, [t.patient.id]: !!v }))
-                      }
-                      className="mt-1"
-                    />
-                    <div className="flex-1 min-w-0">
-                      <div className="flex items-center gap-2 flex-wrap">
-                        <p className="text-xs font-semibold text-[#2D1B14]">{t.patient.name}</p>
-                        {jaEnviada && (
-                          <Badge variant="secondary" className="text-[10px]">
-                            <Check className="h-3 w-3 mr-0.5" />
-                            enviada {dataBR(jaEnviada.sent_at)}
-                          </Badge>
-                        )}
-                      </div>
-                      <Textarea
-                        value={t.message}
-                        onChange={(e) =>
-                          setTargets((prev) =>
-                            prev.map((x) =>
-                              x.patient.id === t.patient.id ? { ...x, message: e.target.value } : x,
-                            ),
-                          )
-                        }
-                        className="mt-1.5 min-h-20 bg-white border-[#EDE3D8] text-xs"
-                      />
-                      <div className="flex gap-1.5 mt-1.5">
-                        <Button
-                          size="sm"
-                          variant="outline"
-                          className="border-[#25D366] text-[#128C4A]"
-                          onClick={() => openWhatsApp(t.patient.phone || '', t.message)}
-                        >
-                          <Send className="h-3 w-3 mr-1" />
-                          Abrir WhatsApp
-                        </Button>
-                        <Button
-                          size="sm"
-                          className="btn-terracotta-gold"
-                          disabled={confirming === t.patient.id}
-                          onClick={() => registrarEnvio(t)}
-                        >
-                          {confirming === t.patient.id ? (
-                            <Loader2 className="h-3 w-3 animate-spin" />
-                          ) : (
-                            'Mensagem enviada'
-                          )}
-                        </Button>
-                      </div>
-                    </div>
-                  </div>
+                <div key={m.id} className="flex items-center justify-between text-xs">
+                  <span className="text-[#2D1B14] font-medium">{nome}</span>
+                  <span className="text-[#6B4F42]">
+                    {m.campaign} • {dataBR(m.sent_at)}
+                  </span>
                 </div>
               )
             })}
-            {filtrados.length === 0 && (
-              <p className="text-xs text-[#6B4F42] py-4 text-center">
-                {targets.length === 0
-                  ? 'Nenhum paciente elegível (telefone + consentimento).'
-                  : 'Nenhum resultado para a busca.'}
-              </p>
-            )}
-          </div>
-        </DialogContent>
-      </Dialog>
+          </CardContent>
+        </Card>
+      )}
     </div>
   )
 }

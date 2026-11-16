@@ -27,6 +27,12 @@ export interface FinancialTransactionRecord {
   transaction_date: string
   /** Percentual da taxa de cartão lançada como despesa interna (null = sem taxa). */
   card_fee_percent?: number | null
+  /** Nº do documento (nota fiscal, recibo etc.) da despesa. */
+  doc_number?: string
+  /** Data de vencimento da despesa (quando diferente do lançamento). */
+  due_date?: string
+  /** Valor efetivamente pago (quando diferente do lançado). */
+  paid_amount?: number | null
   created: string
   expand?: {
     patient?: any
