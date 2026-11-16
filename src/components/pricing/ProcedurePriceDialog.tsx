@@ -19,6 +19,7 @@ import { Switch } from '@/components/ui/switch'
 import { Badge } from '@/components/ui/badge'
 import { toast } from '@/hooks/use-toast'
 import { extractFieldErrors, type FieldErrors } from '@/lib/pocketbase/errors'
+import { SPECIALTIES, FAMILY_SUGGESTIONS } from '@/lib/pricing-engine'
 
 interface Props {
   procedure: ProcedureRecord | null
@@ -49,6 +50,8 @@ export function ProcedurePriceDialog({
   const [useManual, setUseManual] = useState(false)
   const [manualPrice, setManualPrice] = useState('')
   const [maxDesconto, setMaxDesconto] = useState('')
+  const [specialty, setSpecialty] = useState('')
+  const [family, setFamily] = useState('')
   const [errors, setErrors] = useState<FieldErrors>({})
   const [saving, setSaving] = useState(false)
 
@@ -59,6 +62,8 @@ export function ProcedurePriceDialog({
         initial[f.key] = String((procedure as any)[f.key] ?? '')
       })
       setForm(initial)
+      setSpecialty(procedure.specialty || '')
+      setFamily(procedure.family || '')
       setUseManual(procedure.use_manual_price ?? false)
       setManualPrice(String(procedure.manual_price ?? ''))
       setMaxDesconto(
@@ -116,6 +121,8 @@ export function ProcedurePriceDialog({
     setSaving(true)
     try {
       await updateProcedure(procedure.id, {
+        specialty,
+        family,
         card_fee_percent: numVal('card_fee_percent'),
         ir_percent: numVal('ir_percent'),
         material_cost: numVal('material_cost'),
@@ -152,6 +159,41 @@ export function ProcedurePriceDialog({
           </DialogDescription>
         </DialogHeader>
         <form onSubmit={handleSave} className="space-y-4">
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <Label className="text-xs font-semibold">Especialidade</Label>
+              <select
+                value={specialty}
+                onChange={(e) => setSpecialty(e.target.value)}
+                className="w-full h-9 rounded-md border border-[#EDE3D8] bg-[#FFFDF9] px-2 text-xs"
+              >
+                <option value="">—</option>
+                {opcoesEspecialidade(procedure).map((s) => (
+                  <option key={s} value={s}>
+                    {s}
+                  </option>
+                ))}
+              </select>
+            </div>
+            <div>
+              <Label className="text-xs font-semibold">Família</Label>
+              <select
+                value={family}
+                onChange={(e) => setFamily(e.target.value)}
+                className="w-full h-9 rounded-md border border-[#EDE3D8] bg-[#FFFDF9] px-2 text-xs"
+              >
+                <option value="">—</option>
+                {opcoesFamilia(procedure).map((f) => (
+                  <option key={f} value={f}>
+                    {f}
+                  </option>
+                ))}
+              </select>
+              <p className="text-[10px] text-[#6B4F42] mt-1">
+                Reflete na cascata do “Adicionar procedimento” do planejamento.
+              </p>
+            </div>
+          </div>
           <div className="bg-[#FAF6F0] rounded-lg p-3 border border-[#EDE3D8] flex items-center justify-between">
             <div>
               <p className="text-xs text-[#6B4F42]">
@@ -237,4 +279,16 @@ export function ProcedurePriceDialog({
       </DialogContent>
     </Dialog>
   )
+}
+
+function opcoesEspecialidade(procedure: ProcedureRecord): string[] {
+  const base = Array.from(new Set(SPECIALTIES as readonly string[]))
+  if (procedure.specialty && !base.includes(procedure.specialty)) base.push(procedure.specialty)
+  return base.sort((a, b) => a.localeCompare(b, 'pt-BR'))
+}
+
+function opcoesFamilia(procedure: ProcedureRecord): string[] {
+  const base = Array.from(new Set(FAMILY_SUGGESTIONS as readonly string[]))
+  if (procedure.family && !base.includes(procedure.family)) base.push(procedure.family)
+  return base.sort((a, b) => a.localeCompare(b, 'pt-BR'))
 }

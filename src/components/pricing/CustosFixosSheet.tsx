@@ -84,7 +84,7 @@ export function CustosFixosSheet({ items, onChange }: Props) {
             <thead>
               <tr className="bg-[#F5EEE6] text-left text-[10px] uppercase text-[#6B4F42]">
                 <th className="py-2 px-3 font-semibold">Descrição</th>
-                <th className="py-2 px-3 font-semibold text-right w-36">Valor (R$)</th>
+                <th className="py-2 px-3 font-semibold text-right w-40 min-w-40">Valor (R$)</th>
                 <th className="py-2 px-2 w-10"></th>
               </tr>
             </thead>
@@ -109,7 +109,7 @@ export function CustosFixosSheet({ items, onChange }: Props) {
                       disabled={busy === row.id}
                     />
                   </td>
-                  <td className="py-1 px-3 text-right">
+                  <td className="py-1 px-3 text-right min-w-40">
                     <Input
                       type="number"
                       min={0}
@@ -126,7 +126,7 @@ export function CustosFixosSheet({ items, onChange }: Props) {
                         Number(e.target.value) !== row.amount &&
                         atualizar(row, { amount: Number(e.target.value) || 0 })
                       }
-                      className="h-7 text-xs text-right bg-transparent border-transparent hover:border-[#EDE3D8]"
+                      className="h-7 text-xs text-right bg-transparent border-transparent hover:border-[#EDE3D8] w-full max-w-full"
                       disabled={busy === row.id}
                     />
                   </td>

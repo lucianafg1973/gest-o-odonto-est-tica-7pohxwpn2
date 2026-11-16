@@ -1,5 +1,10 @@
 import { useMemo, useRef, useState } from 'react'
-import { ProcedureRecord, createProcedure, updateProcedureWithHistory } from '@/services/procedures'
+import {
+  ProcedureRecord,
+  createProcedure,
+  updateProcedure,
+  updateProcedureWithHistory,
+} from '@/services/procedures'
 import { ProcedurePriceDialog } from '@/components/pricing/ProcedurePriceDialog'
 import CsvImporter from '@/components/pricing/CsvImporter'
 import DiscountSimulator from '@/components/pricing/DiscountSimulator'
@@ -193,6 +198,53 @@ export default function ProceduresPricingPage({ procedures, horaClinica, onReloa
   /** Botão Inativar/Reativar pelo estado atual do registro. */
   const procEstaAtivo = (proc: ProcedureRecord) => proc.active !== false
 
+  /** Salva Especialidade/Família editadas (cascata do planejamento reflete via onReload). */
+  const salvarClassificacao = async (
+    proc: ProcedureRecord,
+    specialty?: string,
+    family?: string,
+  ) => {
+    if ((specialty ?? proc.specialty) === proc.specialty && (family ?? proc.family) === proc.family)
+      return
+    try {
+      await updateProcedure(proc.id, {
+        specialty: (specialty ?? proc.specialty) || '',
+        family: (family ?? proc.family) || '',
+      })
+      toast({ title: 'Classificação atualizada!', description: proc.name })
+      onReload()
+    } catch {
+      toast({ title: 'Erro ao atualizar especialidade/família', variant: 'destructive' })
+    }
+  }
+
+  /** Opções da especialidade: as do catálogo + a atual do registro. */
+  const opcoesEspecialidade = (proc: ProcedureRecord): string[] => {
+    const base = Array.from(
+      new Set(
+        [...(SPECIALTIES as readonly string[]), ...procedures.map((p) => p.specialty)].filter(
+          Boolean,
+        ) as string[],
+      ),
+    )
+    if (proc.specialty && !base.includes(proc.specialty)) base.push(proc.specialty)
+    return base.sort((a, b) => a.localeCompare(b, 'pt-BR'))
+  }
+
+  /** Opções de família: sugestões + famílias já usadas + a atual do registro. */
+  const opcoesFamilia = (proc: ProcedureRecord): string[] => {
+    const base = Array.from(
+      new Set(
+        [
+          ...(FAMILY_SUGGESTIONS as readonly string[]),
+          ...procedures.filter((p) => p.specialty === proc.specialty).map((p) => p.family),
+        ].filter(Boolean) as string[],
+      ),
+    )
+    if (proc.family && !base.includes(proc.family)) base.push(proc.family)
+    return base.sort((a, b) => a.localeCompare(b, 'pt-BR'))
+  }
+
   const salvarPreco = async (proc: ProcedureRecord, price: number) => {
     try {
       await updateProcedureWithHistory(
@@ -317,7 +369,6 @@ export default function ProceduresPricingPage({ procedures, horaClinica, onReloa
             <table className="w-full text-xs">
               <thead>
                 <tr className="text-left text-[#6B4F42] border-b border-[#EDE3D8]">
-                  <th className="py-2 pr-2">Código</th>
                   <th className="py-2 pr-2">Especialidade / Família</th>
                   <th className="py-2 pr-2">Nome</th>
                   <th className="py-2 pr-2 text-right">Tempo</th>
@@ -338,14 +389,35 @@ export default function ProceduresPricingPage({ procedures, horaClinica, onReloa
                       key={proc.id}
                       className={`border-b border-[#F5EEE6] hover:bg-[#FAF6F0] ${ativo ? '' : 'opacity-50'}`}
                     >
-                      <td className="py-2 pr-2 font-mono text-[10px] text-[#6B4F42]">
-                        {proc.external_code || '—'}
-                      </td>
-                      <td className="py-2 pr-2">
-                        <p className="text-[11px] font-semibold text-[#2D1B14]">
-                          {proc.specialty || '—'}
-                        </p>
-                        <p className="text-[10px] text-[#6B4F42]">{proc.family || '—'}</p>
+                      <td className="py-2 pr-2 min-w-44">
+                        <select
+                          value={proc.specialty || ''}
+                          onChange={(e) => salvarClassificacao(proc, e.target.value, proc.family)}
+                          className="w-full max-w-full text-[11px] font-semibold text-[#2D1B14] bg-transparent border border-transparent hover:border-[#EDE3D8] rounded px-1 py-0.5"
+                          title="Especialidade (editável)"
+                        >
+                          {!proc.specialty && <option value="">—</option>}
+                          {opcoesEspecialidade(proc).map((s) => (
+                            <option key={s} value={s}>
+                              {s}
+                            </option>
+                          ))}
+                        </select>
+                        <select
+                          value={proc.family || ''}
+                          onChange={(e) =>
+                            salvarClassificacao(proc, proc.specialty, e.target.value)
+                          }
+                          className="w-full max-w-full text-[10px] text-[#6B4F42] bg-transparent border border-transparent hover:border-[#EDE3D8] rounded px-1 py-0.5 mt-0.5"
+                          title="Família (editável)"
+                        >
+                          {!proc.family && <option value="">—</option>}
+                          {opcoesFamilia(proc).map((f) => (
+                            <option key={f} value={f}>
+                              {f}
+                            </option>
+                          ))}
+                        </select>
                       </td>
                       <td className="py-2 pr-2 text-[11px]">
                         <span className="inline-flex items-center gap-1.5">
