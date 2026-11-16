@@ -20,8 +20,7 @@ import {
   MessageCircle,
   CheckCircle2,
   Cake,
-  Check,
-  Users,
+  ChevronDown,
 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
@@ -41,6 +40,8 @@ import {
 } from '@/components/ui/select'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
+import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover'
+import { Checkbox } from '@/components/ui/checkbox'
 import { toast } from '@/hooks/use-toast'
 import { useAuth } from '@/hooks/use-auth'
 import { hasActiveAppointmentAt, countTodayBirthdays } from '@/lib/agenda-status'
@@ -86,6 +87,7 @@ export default function Agenda() {
   // dialogs
   // Filtro de profissionais (multi-seleção): vazio = Todos.
   const [profFilter, setProfFilter] = useState<string[]>([])
+  const [profMenuOpen, setProfMenuOpen] = useState(false)
   const [editTarget, setEditTarget] = useState<AppointmentRecord | null>(null)
   const [cancelTarget, setCancelTarget] = useState<{
     app: AppointmentRecord
@@ -435,48 +437,61 @@ export default function Agenda() {
         </div>
       </div>
 
-      {/* Filtro de profissionais (multi-seleção) — vale para grade, lista e indicadores */}
-      <div className="flex flex-wrap items-center gap-2 bg-white border border-[#EDE3D8] rounded-xl px-3 py-2 shadow-subtle">
-        <span className="flex items-center gap-1 text-[10px] font-semibold uppercase tracking-wide text-[#6B4F42]">
-          <Users className="w-3.5 h-3.5 text-[#C66B4D]" /> Profissionais:
+      {/* Filtro de profissionais (multi-seleção em um único menu) — vale para grade, lista e indicadores */}
+      <div className="flex flex-wrap items-center gap-2">
+        <span className="text-[10px] font-semibold uppercase tracking-wide text-[#6B4F42]">
+          Profissionais:
         </span>
-        <button
-          type="button"
-          onClick={() => setProfFilter([])}
-          className={cn(
-            'text-xs px-3 py-1 rounded-full border transition-colors',
-            profFilter.length === 0
-              ? 'bg-[#C66B4D] text-white border-[#C66B4D] font-semibold'
-              : 'bg-white text-[#6B4F42] border-[#EDE3D8] hover:bg-[#FFF3D6]',
-          )}
-        >
-          Todos
-        </button>
-        {professionalOptions.map((p) => {
-          const on = profFilter.includes(p.id)
-          return (
+        <Popover open={profMenuOpen} onOpenChange={setProfMenuOpen}>
+          <PopoverTrigger asChild>
             <button
-              key={p.id}
               type="button"
-              onClick={() => toggleProfFilter(p.id)}
               className={cn(
-                'text-xs px-3 py-1 rounded-full border transition-colors flex items-center gap-1',
-                on
+                'text-xs px-3 py-1.5 rounded-full border transition-colors flex items-center gap-1.5',
+                profFilter.length > 0
                   ? 'bg-[#C66B4D] text-white border-[#C66B4D] font-semibold'
                   : 'bg-white text-[#6B4F42] border-[#EDE3D8] hover:bg-[#FFF3D6]',
               )}
             >
-              {on && <Check className="w-3 h-3" />}
-              {p.name}
+              {profFilter.length === 0 ? (
+                'Todos'
+              ) : (
+                <>
+                  <span className="inline-flex items-center justify-center min-w-[18px] h-[18px] px-1 rounded-full bg-white/25 text-[10px] font-bold">
+                    {profFilter.length}
+                  </span>
+                  {profFilter.length === 1 ? 'profissional' : 'profissionais'}
+                </>
+              )}
+              <ChevronDown className="w-3.5 h-3.5" />
             </button>
-          )
-        })}
-        {profFilter.length > 0 && (
-          <span className="text-[10px] text-[#6B4F42]">
-            {profFilter.length}{' '}
-            {profFilter.length === 1 ? 'profissional selecionado' : 'profissionais selecionados'}
-          </span>
-        )}
+          </PopoverTrigger>
+          <PopoverContent align="start" className="w-64 p-2">
+            <div className="px-2 py-1.5 text-[10px] font-semibold uppercase tracking-wide text-[#6B4F42]">
+              {profFilter.length === 0
+                ? 'Todos (nenhum selecionado)'
+                : `${profFilter.length} ${
+                    profFilter.length === 1
+                      ? 'profissional selecionado'
+                      : 'profissionais selecionados'
+                  }`}
+            </div>
+            <div className="max-h-64 overflow-y-auto">
+              {professionalOptions.map((p) => (
+                <label
+                  key={p.id}
+                  className="flex items-center gap-2 px-2 py-2 rounded-lg text-xs text-[#2D1B14] cursor-pointer hover:bg-[#FFF3D6]"
+                >
+                  <Checkbox
+                    checked={profFilter.includes(p.id)}
+                    onCheckedChange={() => toggleProfFilter(p.id)}
+                  />
+                  {p.name}
+                </label>
+              ))}
+            </div>
+          </PopoverContent>
+        </Popover>
       </div>
 
       {/* Indicadores de comparecimento — visível nas duas abas (já chegam filtrados) */}
