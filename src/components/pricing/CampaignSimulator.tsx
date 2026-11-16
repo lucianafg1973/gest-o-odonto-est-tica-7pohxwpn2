@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react'
-import { pb } from '@/lib/pocketbase/client'
+import pb from '@/lib/pocketbase/client'
 import { useAuth } from '@/hooks/use-auth'
 import { useToast } from '@/hooks/use-toast'
 import { Button } from '@/components/ui/button'
@@ -36,23 +36,6 @@ import { getProcedures, ProcedureRecord } from '@/services/procedures'
  *   explícita de comunicações (ver aceitoComercial).
  */
 
-interface CampaignConfig {
-  id: string
-  name: string
-  description?: string
-  discount_percent: number
-  target_procedures: string[]
-  start_date: string
-  end_date: string
-}
-
-interface Props {
-  campaigns: CampaignConfig[]
-  onCreateCampaign: (data: Omit<CampaignConfig, 'id'>) => void
-  onUpdateCampaign: (id: string, data: Partial<CampaignConfig>) => void
-  onDeleteCampaign: (id: string) => void
-}
-
 interface PatientTarget {
   patient: PatientRecord
   proc: ProcedureRecord | null
@@ -83,12 +66,7 @@ const dataBR = (iso?: string) => {
   return `${d}/${m}/${y}`
 }
 
-export function CampaignSimulator({
-  campaigns,
-  onCreateCampaign,
-  onUpdateCampaign,
-  onDeleteCampaign,
-}: Props) {
+export default function CampaignSimulator({ procedures }: { procedures: ProcedureRecord[] }) {
   const { user } = useAuth()
   const { toast } = useToast()
 
@@ -100,7 +78,6 @@ export function CampaignSimulator({
     new Date(Date.now() + 30 * 86400000).toISOString().slice(0, 10),
   )
   const [targetProcedures, setTargetProcedures] = useState<string[]>([])
-  const [procedures, setProcedures] = useState<ProcedureRecord[]>([])
   const [patients, setPatients] = useState<PatientRecord[]>([])
   const [sentMessages, setSentMessages] = useState<CampaignMessageRecord[]>([])
 
@@ -117,19 +94,16 @@ export function CampaignSimulator({
   useEffect(() => {
     const load = async () => {
       try {
-        const [procs, pats, msgs] = await Promise.all([
-          getProcedures(),
+        const [pats, msgs] = await Promise.all([
           getPatients(),
           pb.collection('campaign_messages').getFullList<CampaignMessageRecord>({
             sort: '-sent_at',
-            filter: 'campaign != ""',
           }),
         ])
-        setProcedures(procs)
         setPatients(pats)
         setSentMessages(msgs)
       } catch {
-        /* silencioso: sem procedimentos/pacientes ainda */
+        /* silencioso: coleção campaign_messages pode não existir ainda */
       }
     }
     load()
@@ -159,56 +133,34 @@ export function CampaignSimulator({
   const precoBase = alvo?.price ?? 0
   const precoPromo = precoBase * (1 - (parseFloat(discount) || 0) / 100)
 
-  const resetCampanha = () => {
-    setName('')
-    setDescription('')
-    setDiscount('10')
-    setTargetProcedures([])
-    setStartDate(new Date().toISOString().slice(0, 10))
-    setEndDate(new Date(Date.now() + 30 * 86400000).toISOString().slice(0, 10))
-  }
-
-  const criarCampanha = () => {
+  const gerarCriativo = async () => {
     if (!name.trim()) {
       toast({ title: 'Informe o nome da campanha', variant: 'destructive' })
       return
     }
-    onCreateCampaign({
-      name: name.trim(),
-      description: description.trim(),
-      discount_percent: parseFloat(discount) || 0,
-      target_procedures: targetProcedures,
-      start_date: startDate,
-      end_date: endDate,
-    })
-    toast({ title: 'Campanha criada!', description: name })
-    resetCampanha()
-  }
-
-  const gerarCriativo = async (campaign: CampaignConfig) => {
     setCriativoOpen(true)
     setCriativoLoading(true)
     setCriativoText('')
     try {
-      const res = await fetch('/api/lfg/campaign-creative', {
+      const briefing = [
+        `Campanha: ${name.trim()}`,
+        discount ? `Desconto: ${discount}%` : '',
+        alvo ? `Procedimento-alvo: ${alvo.name}` : '',
+        precoBase > 0
+          ? `Preço oficial ${formatCurrency(precoBase)}; preço promocional ${formatCurrency(precoPromo)}.`
+          : '',
+        description.trim() ? `Briefing adicional: ${description.trim()}` : '',
+        `Validade: ${dataBR(endDate)}`,
+      ]
+        .filter(Boolean)
+        .join('\n')
+      // Rota nativa do pb_hooks campaign_creative (agente 'criativo-campanhas').
+      const body = await pb.send<{ content: string }>('/backend/v1/ai/campaign/creative', {
         method: 'POST',
+        body: JSON.stringify({ briefing }),
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          nome: campaign.name,
-          descricao: campaign.description || '',
-          desconto: campaign.discount_percent,
-          procedimento: alvo?.name || '',
-          preco_base: precoBase,
-          preco_promo: precoPromo,
-          validade: dataBR(campaign.end_date),
-        }),
       })
-      if (!res.ok) {
-        const body = await res.json().catch(() => ({}))
-        throw new Error(body?.error || `Erro ${res.status}`)
-      }
-      const body = await res.json()
-      setCriativoText(body.criativo || '')
+      setCriativoText(body.content || '')
       toast({ title: 'Criativo gerado!', description: 'Edite o texto antes de usar.' })
     } catch (e: any) {
       toast({
@@ -397,59 +349,21 @@ export function CampaignSimulator({
             </div>
           </div>
           <div className="flex flex-wrap gap-2">
-            <Button className="btn-terracotta-gold" onClick={criarCampanha}>
-              Criar campanha
+            <Button
+              className="border-[#C66B4D] text-[#C66B4D]"
+              variant="outline"
+              onClick={gerarCriativo}
+            >
+              <Sparkles className="h-3.5 w-3.5 mr-1" />
+              Criativo com IA (editável)
+            </Button>
+            <Button className="btn-terracotta-gold" onClick={abrirLista}>
+              <Send className="h-3.5 w-3.5 mr-1" />
+              WhatsApp p/ clientes
             </Button>
           </div>
         </CardContent>
       </Card>
-
-      {campaigns.map((c) => (
-        <Card key={c.id} className="border-[#EDE3D8]">
-          <CardHeader className="pb-2 flex-row items-start justify-between space-y-0">
-            <div>
-              <CardTitle className="text-base font-serif-title text-[#2D1B14]">{c.name}</CardTitle>
-              {c.description && <p className="text-xs text-[#6B4F42] mt-1">{c.description}</p>}
-              <div className="flex items-center gap-2 mt-2 flex-wrap">
-                <Badge className="bg-[#D4AF37] text-[#2D1B14]">{c.discount_percent}% OFF</Badge>
-                <span className="text-[10px] text-[#6B4F42]">
-                  {dataBR(c.start_date)} → {dataBR(c.end_date)}
-                </span>
-              </div>
-            </div>
-            <div className="flex gap-1.5">
-              <Button
-                size="sm"
-                variant="outline"
-                className="border-[#C66B4D] text-[#C66B4D]"
-                onClick={() => gerarCriativo(c)}
-              >
-                <Sparkles className="h-3.5 w-3.5 mr-1" />
-                Fazer criativo com IA (ChatGPT)
-              </Button>
-              <Button size="sm" className="btn-terracotta-gold" onClick={abrirLista}>
-                <Send className="h-3.5 w-3.5 mr-1" />
-                WhatsApp p/ clientes
-              </Button>
-              <Button
-                size="sm"
-                variant="ghost"
-                className="text-red-500"
-                onClick={() => onDeleteCampaign(c.id)}
-              >
-                Excluir
-              </Button>
-            </div>
-          </CardHeader>
-          {c.target_procedures.length > 0 && (
-            <CardContent className="pt-0">
-              <p className="text-[11px] text-[#6B4F42]">
-                {c.target_procedures.length} procedimento(s) selecionado(s)
-              </p>
-            </CardContent>
-          )}
-        </Card>
-      ))}
 
       {/* Diálogo do criativo de IA — proposta EDITÁVEL */}
       <Dialog open={criativoOpen} onOpenChange={setCriativoOpen}>

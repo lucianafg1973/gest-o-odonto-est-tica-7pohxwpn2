@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useState } from 'react'
+import MovimentosCaixa from '@/components/financial/MovimentosCaixa'
 import ClinicalHourSheet from '@/components/pricing/ClinicalHourSheet'
 import ProceduresPricingPage from '@/components/pricing/ProceduresPricingPage'
 import CampaignSimulator from '@/components/pricing/CampaignSimulator'
@@ -166,18 +167,7 @@ export default function Financial() {
         </div>
       )}
 
-      {secao === 'movimentos' && (
-        <Card className="card-warm">
-          <CardContent className="pt-5">
-            <p className="text-xs text-[#6B4F42]">
-              Receitas e despesas continuam na aba Financeiro do paciente e nas transações — esta
-              seção resume os custos fixos da planilha da Hora Clínica (
-              {formatCurrency(custosMensais)}
-              /mês).
-            </p>
-          </CardContent>
-        </Card>
-      )}
+      {secao === 'movimentos' && <MovimentosCaixa />}
 
       {secao === 'hora' && <ClinicalHourSheet items={items} config={config} onReload={reload} />}
 

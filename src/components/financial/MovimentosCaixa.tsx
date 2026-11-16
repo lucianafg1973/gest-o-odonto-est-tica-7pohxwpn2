@@ -1,5 +1,4 @@
-import { useMemo, useState } from 'react'
-import { useAuth } from '@/hooks/use-auth'
+import { useEffect, useMemo, useState } from 'react'
 import { useToast } from '@/hooks/use-toast'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
@@ -39,7 +38,6 @@ import { Plus, Pencil, Trash2, TrendingUp, TrendingDown } from 'lucide-react'
  * mês = receitas recebidas − despesas pagas (não confundir com faturamento).
  */
 export default function MovimentosCaixa({ onTxChange }: { onTxChange?: (n: number) => void }) {
-  const { user } = useAuth()
   const { toast } = useToast()
   const [txs, setTxs] = useState<FinancialTransactionRecord[]>([])
   const [patients, setPatients] = useState<PatientRecord[]>([])
@@ -62,9 +60,10 @@ export default function MovimentosCaixa({ onTxChange }: { onTxChange?: (n: numbe
     }
   }
 
-  if (loading && txs.length === 0) {
-    void reload()
-  }
+  useEffect(() => {
+    reload()
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
 
   const receitas = useMemo<LinhaReceita[]>(() => linhasReceitas(txs, patients), [txs, patients])
   const despesas = useMemo<LinhaDespesa[]>(() => linhasDespesas(txs), [txs])
@@ -72,12 +71,6 @@ export default function MovimentosCaixa({ onTxChange }: { onTxChange?: (n: numbe
     () => historicoLucratividade(receitas, despesas),
     [receitas, despesas],
   )
-
-  const registrarEnviada = async (linha: LinhaReceita) => {
-    void linha
-    toast({ title: 'Recibo registrado no histórico do paciente.' })
-  }
-  void registrarEnviada
 
   const aoSalvar = async () => {
     setEditando(null)
@@ -323,7 +316,6 @@ export default function MovimentosCaixa({ onTxChange }: { onTxChange?: (n: numbe
       {(editando || novaDespesa) && (
         <DespesaDialog
           tx={editando}
-          usuario={user?.name || user?.email || 'usuário'}
           onClose={() => {
             setEditando(null)
             setNovaDespesa(false)
@@ -338,15 +330,14 @@ export default function MovimentosCaixa({ onTxChange }: { onTxChange?: (n: numbe
 
 function DespesaDialog({
   tx,
-  usuario,
   onClose,
   onSaved,
 }: {
   tx: FinancialTransactionRecord | null
-  usuario: string
   onClose: () => void
   onSaved: () => void
 }) {
+  const { toast } = useToast()
   const [description, setDescription] = useState(tx?.description || '')
   const [amount, setAmount] = useState(String(tx?.amount ?? ''))
   const [docNumber, setDocNumber] = useState((tx as any)?.doc_number || '')
@@ -354,7 +345,7 @@ function DespesaDialog({
   const [payDate, setPayDate] = useState(
     tx?.transaction_date ? String(tx.transaction_date).split(' ')[0].slice(0, 10) : '',
   )
-  const [status, setStatus] = useState(tx?.status || 'pago')
+  const [status, setStatus] = useState<'pago' | 'pendente' | 'cancelado'>(tx?.status || 'pago')
   const [saving, setSaving] = useState(false)
 
   const salvar = async () => {
@@ -372,8 +363,6 @@ function DespesaDialog({
         transaction_date: payDate || new Date().toISOString().slice(0, 10),
         doc_number: docNumber.trim() || undefined,
         due_date: dueDate || undefined,
-        category: 'despesa_operacional',
-        created_by: usuario,
       } as any
       if (tx) await updateDespesa(tx.id, data)
       else await createDespesa(data)
