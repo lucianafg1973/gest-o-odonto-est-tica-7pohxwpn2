@@ -2,7 +2,12 @@
  * Utilitários da agenda: status, aniversariantes, mensagem de aniversário e indicadores.
  * Importado por src/pages/Agenda.tsx.
  */
-import { AppointmentRecord, STATUS_LABELS, type AppointmentStatus } from '@/services/appointments'
+import {
+  AppointmentRecord,
+  STATUS_LABELS,
+  isCompromisso,
+  type AppointmentStatus,
+} from '@/services/appointments'
 import type { PatientRecord } from '@/services/patients'
 import { createMessageRecord } from '@/services/messages'
 
@@ -229,6 +234,44 @@ export function hasActiveAppointmentAt(
 
 /** Período para os filtros de indicadores. */
 export type PeriodFilter = 'day' | 'week' | 'month' | 'all'
+
+/**
+ * Compromissos de DIA INTEIRO que FECHAM a agenda, indexados por data (ISO).
+ * Não existe mais faixa "Dia todo": o compromisso de dia inteiro fecha o dia
+ * (só do profissional dele quando tem profissional; de todos quando não tem).
+ */
+export function allDayClosuresByDate(
+  appointments: AppointmentRecord[],
+): Map<string, AppointmentRecord[]> {
+  const map = new Map<string, AppointmentRecord[]>()
+  for (const a of appointments) {
+    if (!isCompromisso(a) || !a.is_all_day) continue
+    if (isSlotFree(a)) continue
+    const k = (a.date || '').slice(0, 10)
+    if (!k) continue
+    const arr = map.get(k)
+    if (arr) arr.push(a)
+    else map.set(k, [a])
+  }
+  return map
+}
+
+/**
+ * O compromisso que FECHA a agenda em dateISO para a coluna do profissional dado
+ * ('' = sem profissional / visão semana): clinicas (sem profissional) fecham para
+ * todos; com profissional, fecha só a coluna dele.
+ */
+export function agendaFechada(
+  closures: Map<string, AppointmentRecord[]>,
+  dateISO: string,
+  professionalId: string,
+): AppointmentRecord | null {
+  return (
+    (closures.get(dateISO) || []).find(
+      (a) => !a.professional || a.professional === professionalId,
+    ) || null
+  )
+}
 
 /** Filtra agendamentos por período (dia selecionado / semana / mês correntes). */
 export function filterByPeriod(
