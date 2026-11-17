@@ -61,6 +61,7 @@ import { PlanDocsSection } from '@/components/documents/PlanDocsSection'
 import { PlanDocSnapshot, DocOptions } from '@/lib/plan-doc'
 import { buildArchiveDocument, parseArchiveMeta, contentComAssinatura } from '@/lib/plan-archive'
 import { useAuth } from '@/hooks/use-auth'
+import PatientAppointmentsHistoryDialog from '@/components/agenda/PatientAppointmentsHistoryDialog'
 import {
   FileText,
   Image as ImageIcon,
@@ -81,6 +82,7 @@ import {
   MessageCircle,
   FileSignature,
   Paperclip,
+  History,
 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
@@ -208,6 +210,7 @@ export default function PacienteDetail() {
   const [previewDoc, setPreviewDoc] = useState<DocumentRecord | null>(null)
 
   const [editOpen, setEditOpen] = useState(false)
+  const [histOpen, setHistOpen] = useState(false)
   const [imageToDelete, setImageToDelete] = useState<ImageRecord | null>(null)
   const [hoofTreatments, setHoofTreatments] = useState<PlannedTreatment[]>([])
   const [dentalTreatments, setDentalTreatments] = useState<Tratamento[]>([])
@@ -825,6 +828,8 @@ export default function PacienteDetail() {
   if (!patient)
     return <div className="p-8 text-center text-xs text-[#6B4F42]">Carregando paciente...</div>
 
+  const patientName = patient?.name || 'Paciente'
+
   const tabTriggerClass = 'text-xs data-[state=active]:bg-[#C66B4D] data-[state=active]:text-white'
   const photoUrl = getPatientPhotoUrl(patient)
 
@@ -854,6 +859,12 @@ export default function PacienteDetail() {
 
   return (
     <div className="space-y-6">
+      <PatientAppointmentsHistoryDialog
+        open={histOpen}
+        onOpenChange={setHistOpen}
+        patientId={id || ''}
+        patientName={patientName}
+      />
       <div className="flex items-center gap-3">
         <Button variant="ghost" size="icon" onClick={() => navigate('/pacientes')}>
           <ChevronLeft className="w-5 h-5 text-[#2D1B14]" />
@@ -876,7 +887,14 @@ export default function PacienteDetail() {
             </p>
           </div>
         </div>
-        <div className="ml-auto">
+        <div className="ml-auto flex items-center gap-2">
+          <Button
+            variant="outline"
+            className="text-xs font-semibold border-[#EDE3D8] bg-white text-[#2D1B14] hover:bg-[#FAF6F0]"
+            onClick={() => setHistOpen(true)}
+          >
+            <History className="w-4 h-4 mr-1" /> Histórico de agendamentos
+          </Button>
           <Button
             className="btn-terracotta-gold text-xs font-semibold"
             onClick={() => setEditOpen(true)}

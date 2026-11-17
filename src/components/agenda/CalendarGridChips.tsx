@@ -20,6 +20,13 @@ import { durationMinutes } from '@/services/appointments'
 import { categorizeAppointment, CATEGORY_STYLES, CATEGORY_LABELS } from '@/lib/appointment-category'
 import { professionalPastel, NEUTRAL_PASTEL } from '@/lib/professional-colors'
 import { isSlotFree } from '@/lib/agenda-status'
+import {
+  ContextMenu,
+  ContextMenuContent,
+  ContextMenuItem,
+  ContextMenuTrigger,
+} from '@/components/ui/context-menu'
+import { CalendarClock, GripVertical } from 'lucide-react'
 import { cn } from '@/lib/utils'
 
 const SLOT_MIN = 30
@@ -147,10 +154,13 @@ export function AppointmentChip({
   app,
   span,
   onOpenDetail,
+  onReschedule,
 }: {
   app: AppointmentRecord
   span: number
   onOpenDetail: (app: AppointmentRecord) => void
+  /** Menu de contexto (botão direito): remarcar para outro horário/dia. */
+  onReschedule?: (app: AppointmentRecord) => void
 }) {
   const compromisso = isCompromisso(app)
   const cat = categorizeAppointment(app)
@@ -177,39 +187,64 @@ export function AppointmentChip({
       } — ${CATEGORY_LABELS[cat]} — Status: ${STATUS_LABELS[app.status]}`
 
   return (
-    <button
-      type="button"
-      className={cn(
-        'relative w-full text-left border rounded-md px-1.5 py-0.5 pl-2 truncate hover:shadow-sm transition-shadow overflow-hidden',
-        compromisso && 'border-dashed',
-      )}
-      style={{
-        backgroundColor: pastel.bg,
-        borderColor: pastel.border,
-        color: pastel.text,
-        height: `${span * 2.25 - 0.15}rem`,
-      }}
-      title={tooltip}
-      onClick={(e) => {
-        e.stopPropagation()
-        onOpenDetail(app)
-      }}
-    >
-      {/* Barra lateral fina: cor da CATEGORIA (consultas) ou cinza (compromissos) */}
-      <span
-        aria-hidden
-        className={cn('absolute left-0 top-0 bottom-0 w-1', !compromisso && catStyle.stripe)}
-        style={compromisso ? { backgroundColor: pastel.dot } : undefined}
-      />
-      <span className="block text-[10px] font-semibold leading-tight truncate pr-2">
-        {mainText}
-      </span>
-      <span className="block text-[9px] opacity-80 leading-tight truncate pr-2">{subText}</span>
-      {!compromisso && (
-        <span className="absolute right-1 top-0.5" title={`Status: ${STATUS_LABELS[app.status]}`}>
-          <StatusSeal status={app.status} />
-        </span>
-      )}
-    </button>
+    <ContextMenu>
+      <ContextMenuTrigger asChild>
+        <button
+          type="button"
+          draggable
+          onDragStart={(e) => {
+            // O id viaja no dataTransfer; a célula de destino resolve o agendamento.
+            e.dataTransfer.setData('text/plain', app.id)
+            e.dataTransfer.effectAllowed = 'move'
+          }}
+          className={cn(
+            'relative w-full text-left border rounded-md px-1.5 py-0.5 pl-2 truncate hover:shadow-sm transition-shadow overflow-hidden cursor-grab active:cursor-grabbing',
+            compromisso && 'border-dashed',
+          )}
+          style={{
+            backgroundColor: pastel.bg,
+            borderColor: pastel.border,
+            color: pastel.text,
+            height: `${span * 2.25 - 0.15}rem`,
+          }}
+          title={`${tooltip} — arraste para remarcar ou clique com o botão direito`}
+          onClick={(e) => {
+            e.stopPropagation()
+            onOpenDetail(app)
+          }}
+        >
+          {/* Barra lateral fina: cor da CATEGORIA (consultas) ou cinza (compromissos) */}
+          <span
+            aria-hidden
+            className={cn('absolute left-0 top-0 bottom-0 w-1', !compromisso && catStyle.stripe)}
+            style={compromisso ? { backgroundColor: pastel.dot } : undefined}
+          />
+          <span className="block text-[10px] font-semibold leading-tight truncate pr-2">
+            {mainText}
+          </span>
+          <span className="block text-[9px] opacity-80 leading-tight truncate pr-2">{subText}</span>
+          {!compromisso && (
+            <span
+              className="absolute right-1 top-0.5"
+              title={`Status: ${STATUS_LABELS[app.status]}`}
+            >
+              <StatusSeal status={app.status} />
+            </span>
+          )}
+        </button>
+      </ContextMenuTrigger>
+      <ContextMenuContent className="w-52">
+        <ContextMenuItem onClick={() => onOpenDetail(app)} className="text-xs text-[#2D1B14] gap-2">
+          <GripVertical className="w-3.5 h-3.5 text-[#6B4F42]" /> Ver detalhes
+        </ContextMenuItem>
+        <ContextMenuItem
+          disabled={!onReschedule}
+          onClick={() => onReschedule?.(app)}
+          className="text-xs text-[#2D1B14] gap-2"
+        >
+          <CalendarClock className="w-3.5 h-3.5 text-[#C66B4D]" /> Remarcar para outro horário
+        </ContextMenuItem>
+      </ContextMenuContent>
+    </ContextMenu>
   )
 }

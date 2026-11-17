@@ -792,7 +792,7 @@ function SlotCell({
         <div
           role="button"
           tabIndex={0}
-          className="absolute inset-0 z-10 cursor-pointer"
+          className="absolute inset-0 z-10 cursor-pointer group/bloq"
           style={{
             backgroundColor: 'rgba(107, 79, 66, 0.05)',
             backgroundImage:
@@ -810,7 +810,7 @@ function SlotCell({
             }
           }}
         >
-          {isFirst && isBloqueioInicio(bloqueado, time) && (
+          {isBloqueioInicio(bloqueado, time) && (
             <span className="m-0.5 flex items-start gap-1 border border-dashed border-[#B08968] rounded-md px-1.5 py-1 bg-[#FAF6F0] hover:shadow-sm">
               <Lock className="w-3 h-3 mt-0.5 shrink-0 text-[#8A6A55]" />
               <span className="min-w-0">
