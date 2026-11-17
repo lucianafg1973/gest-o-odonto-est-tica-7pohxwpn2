@@ -1,10 +1,13 @@
 /**
  * Diálogo de edição do agendamento existente: troca de paciente, procedimento,
  * profissional, data e horários início/fim (com botões +/− de 15 min).
- * Regra preservada: sem duplicidade com agendamento ATIVO (checando excluindo o próprio registro).
+ * COMPROMISSOS (entry_kind='compromisso'): sem paciente/procedimento; mostra o
+ * campo "Qual", o seletor Dia inteiro vs Horário específico (desabilita as horas)
+ * e o botão Excluir — o mesmo fluxo de clique no bloco → editar.
+ * Regra preservada: sem duplicidade com agendamento ATIVO (excluindo o próprio registro).
  */
 import { useEffect, useState } from 'react'
-import { CalendarClock, Minus, Plus } from 'lucide-react'
+import { CalendarClock, Minus, Plus, Trash2 } from 'lucide-react'
 import {
   Dialog,
   DialogContent,
@@ -15,6 +18,7 @@ import {
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
+import { Checkbox } from '@/components/ui/checkbox'
 import {
   Select,
   SelectContent,
@@ -23,7 +27,7 @@ import {
   SelectValue,
 } from '@/components/ui/select'
 import type { AppointmentRecord } from '@/services/appointments'
-import { durationMinutes } from '@/services/appointments'
+import { durationMinutes, compromissoTitulo } from '@/services/appointments'
 import type { PatientRecord } from '@/services/patients'
 import type { ProcedureRecord } from '@/services/procedures'
 import type { ProfessionalRecord } from '@/services/professionals'
@@ -55,7 +59,14 @@ export interface AppointmentEditValues {
   start_time: string
   end_time: string
   notes?: string
+  /** Compromisso: o "qual" (reunião, administrativo, pausa, curso…). */
+  entry_title?: string
+  /** Compromisso de dia inteiro (desabilita as horas; bloqueia a coluna do dia). */
+  is_all_day?: boolean
 }
+
+/** Sugestões curtas de compromisso (texto livre também é aceito). */
+const COMPROMISSO_SUGESTOES = ['Reunião', 'Administrativo', 'Pausa', 'Curso', 'Manutenção']
 
 export default function AppointmentEditDialog({
   open,
@@ -66,6 +77,7 @@ export default function AppointmentEditDialog({
   procedures,
   professionals,
   onConfirm,
+  onDelete,
 }: {
   open: boolean
   onOpenChange: (open: boolean) => void
@@ -75,7 +87,9 @@ export default function AppointmentEditDialog({
   procedures: ProcedureRecord[]
   professionals: ProfessionalRecord[]
   onConfirm: (id: string, values: AppointmentEditValues) => void
+  onDelete?: (id: string) => void
 }) {
+  const isComp = appointment?.entry_kind === 'compromisso'
   const [patient, setPatient] = useState('')
   const [procedure, setProcedure] = useState('')
   const [professional, setProfessional] = useState('')
@@ -83,6 +97,8 @@ export default function AppointmentEditDialog({
   const [startTime, setStartTime] = useState('09:00')
   const [endTime, setEndTime] = useState('09:40')
   const [notes, setNotes] = useState('')
+  const [entryTitle, setEntryTitle] = useState('')
+  const [isAllDay, setIsAllDay] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
   useEffect(() => {
@@ -95,6 +111,10 @@ export default function AppointmentEditDialog({
       const dur = durationMinutes(appointment)
       setEndTime(addMinToTime((appointment.start_time || '09:00').slice(0, 5), dur))
       setNotes(appointment.notes || '')
+      setEntryTitle(
+        compromissoTitulo(appointment) === 'Compromisso' ? '' : compromissoTitulo(appointment),
+      )
+      setIsAllDay(!!appointment.is_all_day)
       setError(null)
     }
   }, [open, appointment])
@@ -119,7 +139,33 @@ export default function AppointmentEditDialog({
 
   const confirm = () => {
     if (!appointment) return
-    if (!patient || !date || !startTime || !endTime) {
+    if (!date) {
+      setError('Preencha a data.')
+      return
+    }
+    if (isComp) {
+      if (!entryTitle.trim()) {
+        setError('Informe qual é o compromisso (ex.: reunião, administrativo…).')
+        return
+      }
+      // Dia inteiro não usa horários; horário específico exige fim > início.
+      if (!isAllDay && timeToMin(endTime) <= timeToMin(startTime)) {
+        setError('O horário de fim deve ser depois do início (mínimo 30 min).')
+        return
+      }
+      onConfirm(appointment.id, {
+        patient: '',
+        professional: professional === 'none' ? '' : professional,
+        date,
+        start_time: isAllDay ? '00:00' : startTime,
+        end_time: isAllDay ? '23:59' : endTime,
+        notes,
+        entry_title: entryTitle.trim(),
+        is_all_day: isAllDay,
+      })
+      return
+    }
+    if (!patient || !startTime || !endTime) {
       setError('Preencha paciente, data e horários.')
       return
     }
@@ -149,123 +195,195 @@ export default function AppointmentEditDialog({
       <DialogContent className="max-w-md bg-white border-[#EDE3D8] max-h-[90vh] overflow-y-auto">
         <DialogHeader>
           <DialogTitle className="font-serif-title text-[#2D1B14] flex items-center gap-2">
-            <CalendarClock className="w-4 h-4 text-[#C66B4D]" /> Editar agendamento
+            <CalendarClock className="w-4 h-4 text-[#C66B4D]" />{' '}
+            {isComp ? 'Editar compromisso' : 'Editar agendamento'}
           </DialogTitle>
           <DialogDescription className="text-xs text-[#6B4F42]">
-            Altere paciente, procedimento, profissional, data e horários. O registro é atualizado —
-            não é criado um novo.
+            {isComp
+              ? 'Altere o compromisso (qual, dia inteiro ou horário), profissional, data e horas. O registro é atualizado — não é criado um novo.'
+              : 'Altere paciente, procedimento, profissional, data e horários. O registro é atualizado — não é criado um novo.'}
           </DialogDescription>
         </DialogHeader>
 
         <div className="space-y-4 py-2">
-          <div className="space-y-1">
-            <Label className="text-xs font-semibold">Paciente</Label>
-            <Select value={patient} onValueChange={setPatient}>
-              <SelectTrigger className="bg-[#FFFDF9] border-[#EDE3D8]">
-                <SelectValue placeholder="Selecione o paciente" />
-              </SelectTrigger>
-              <SelectContent>
-                {patients.map((p) => (
-                  <SelectItem key={p.id} value={p.id}>
-                    {p.name}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </div>
+          {isComp ? (
+            <>
+              <div className="space-y-1">
+                <Label className="text-xs font-semibold">Qual</Label>
+                <Input
+                  placeholder="Ex.: reunião, administrativo, pausa, curso…"
+                  value={entryTitle}
+                  onChange={(e) => setEntryTitle(e.target.value)}
+                />
+                <div className="flex flex-wrap gap-1 pt-1">
+                  {COMPROMISSO_SUGESTOES.map((s) => (
+                    <button
+                      key={s}
+                      type="button"
+                      className="text-[10px] px-2 py-0.5 rounded-full border border-[#EDE3D8] bg-[#FAF6F0] text-[#6B4F42] hover:bg-[#FFF3D6]"
+                      onClick={() => setEntryTitle(s)}
+                    >
+                      {s}
+                    </button>
+                  ))}
+                </div>
+              </div>
 
-          <div className="space-y-1">
-            <Label className="text-xs font-semibold">Procedimento</Label>
-            <Select value={procedure} onValueChange={setProcedure}>
-              <SelectTrigger className="bg-[#FFFDF9] border-[#EDE3D8]">
-                <SelectValue placeholder="Selecione (opcional)" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="none">Sem procedimento</SelectItem>
-                {procedures.map((p) => (
-                  <SelectItem key={p.id} value={p.id}>
-                    {p.name} (R$ {p.price})
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </div>
+              <div className="space-y-1">
+                <Label className="text-xs font-semibold">Duração</Label>
+                <div className="flex items-center gap-4 pt-1">
+                  <label className="flex items-center gap-2 text-xs text-[#2D1B14] cursor-pointer">
+                    <Checkbox checked={isAllDay} onCheckedChange={(v) => setIsAllDay(v === true)} />
+                    Dia inteiro
+                  </label>
+                  <label className="flex items-center gap-2 text-xs text-[#2D1B14] cursor-pointer">
+                    <Checkbox
+                      checked={!isAllDay}
+                      onCheckedChange={(v) => setIsAllDay(v !== true)}
+                    />
+                    Horário específico
+                  </label>
+                </div>
+              </div>
 
-          <div className="space-y-1">
-            <Label className="text-xs font-semibold">Profissional</Label>
-            <Select value={professional} onValueChange={setProfessional}>
-              <SelectTrigger className="bg-[#FFFDF9] border-[#EDE3D8]">
-                <SelectValue placeholder="Selecione (opcional)" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="none">Sem profissional</SelectItem>
-                {professionals.map((p) => (
-                  <SelectItem key={p.id} value={p.id}>
-                    {p.name}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </div>
+              <div className="space-y-1">
+                <Label className="text-xs font-semibold">Profissional</Label>
+                <Select value={professional || 'none'} onValueChange={setProfessional}>
+                  <SelectTrigger className="bg-[#FFFDF9] border-[#EDE3D8]">
+                    <SelectValue placeholder="Selecione (opcional)" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="none">Nenhum (clínica)</SelectItem>
+                    {professionals.map((p) => (
+                      <SelectItem key={p.id} value={p.id}>
+                        {p.name}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+            </>
+          ) : (
+            <>
+              <div className="space-y-1">
+                <Label className="text-xs font-semibold">Paciente</Label>
+                <Select value={patient} onValueChange={setPatient}>
+                  <SelectTrigger className="bg-[#FFFDF9] border-[#EDE3D8]">
+                    <SelectValue placeholder="Selecione o paciente" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {patients.map((p) => (
+                      <SelectItem key={p.id} value={p.id}>
+                        {p.name}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+
+              <div className="space-y-1">
+                <Label className="text-xs font-semibold">Procedimento</Label>
+                <Select value={procedure} onValueChange={setProcedure}>
+                  <SelectTrigger className="bg-[#FFFDF9] border-[#EDE3D8]">
+                    <SelectValue placeholder="Selecione (opcional)" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="none">Sem procedimento</SelectItem>
+                    {procedures.map((p) => (
+                      <SelectItem key={p.id} value={p.id}>
+                        {p.name} (R$ {p.price})
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+
+              <div className="space-y-1">
+                <Label className="text-xs font-semibold">Profissional</Label>
+                <Select value={professional || 'none'} onValueChange={setProfessional}>
+                  <SelectTrigger className="bg-[#FFFDF9] border-[#EDE3D8]">
+                    <SelectValue placeholder="Selecione (opcional)" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="none">Sem profissional</SelectItem>
+                    {professionals.map((p) => (
+                      <SelectItem key={p.id} value={p.id}>
+                        {p.name}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+            </>
+          )}
 
           <div className="space-y-1">
             <Label className="text-xs font-semibold">Data</Label>
             <Input type="date" value={date} onChange={(e) => setDate(e.target.value)} />
           </div>
 
-          <div className="grid grid-cols-2 gap-3">
-            <div className="space-y-1">
-              <Label className="text-xs font-semibold">Início</Label>
-              <Input
-                type="time"
-                value={startTime}
-                onChange={(e) => {
-                  const v = e.target.value
-                  setStartTime(v)
-                  if (v) setEndTime(addMinToTime(v, Math.max(SLOT_MIN, duration)))
-                }}
-              />
-            </div>
-            <div className="space-y-1">
-              <Label className="text-xs font-semibold">Fim</Label>
-              <Input
-                type="time"
-                value={endTime}
-                onChange={(e) => handleEndTimeChange(e.target.value)}
-              />
-            </div>
-          </div>
+          {!isComp || !isAllDay ? (
+            <>
+              <div className="grid grid-cols-2 gap-3">
+                <div className="space-y-1">
+                  <Label className="text-xs font-semibold">Início</Label>
+                  <Input
+                    type="time"
+                    value={startTime}
+                    onChange={(e) => {
+                      const v = e.target.value
+                      setStartTime(v)
+                      if (v) setEndTime(addMinToTime(v, Math.max(SLOT_MIN, duration)))
+                    }}
+                  />
+                </div>
+                <div className="space-y-1">
+                  <Label className="text-xs font-semibold">Fim</Label>
+                  <Input
+                    type="time"
+                    value={endTime}
+                    onChange={(e) => handleEndTimeChange(e.target.value)}
+                  />
+                </div>
+              </div>
 
-          <div className="flex items-center gap-2">
-            <Button
-              type="button"
-              size="sm"
-              variant="outline"
-              className="h-8 w-8 p-0"
-              onClick={() => adjustDuration(-STEP_MIN)}
-              disabled={duration <= SLOT_MIN}
-              title="Diminuir 15 minutos"
-            >
-              <Minus className="w-3.5 h-3.5" />
-            </Button>
-            <div className="flex-1 text-center text-xs text-[#6B4F42]">
-              Duração:{' '}
-              <span className="font-semibold text-[#2D1B14]">
-                {Math.floor(duration / 60) > 0 ? `${Math.floor(duration / 60)}h ` : ''}
-                {duration % 60}min
-              </span>
-            </div>
-            <Button
-              type="button"
-              size="sm"
-              variant="outline"
-              className="h-8 w-8 p-0"
-              onClick={() => adjustDuration(STEP_MIN)}
-              title="Aumentar 15 minutos"
-            >
-              <Plus className="w-3.5 h-3.5" />
-            </Button>
-          </div>
+              <div className="flex items-center gap-2">
+                <Button
+                  type="button"
+                  size="sm"
+                  variant="outline"
+                  className="h-8 w-8 p-0"
+                  onClick={() => adjustDuration(-STEP_MIN)}
+                  disabled={duration <= SLOT_MIN}
+                  title="Diminuir 15 minutos"
+                >
+                  <Minus className="w-3.5 h-3.5" />
+                </Button>
+                <div className="flex-1 text-center text-xs text-[#6B4F42]">
+                  Duração:{' '}
+                  <span className="font-semibold text-[#2D1B14]">
+                    {Math.floor(duration / 60) > 0 ? `${Math.floor(duration / 60)}h ` : ''}
+                    {duration % 60}min
+                  </span>
+                </div>
+                <Button
+                  type="button"
+                  size="sm"
+                  variant="outline"
+                  className="h-8 w-8 p-0"
+                  onClick={() => adjustDuration(STEP_MIN)}
+                  title="Aumentar 15 minutos"
+                >
+                  <Plus className="w-3.5 h-3.5" />
+                </Button>
+              </div>
+            </>
+          ) : (
+            <p className="text-[11px] text-[#6B4F42] bg-[#FAF6F0] border border-[#EDE3D8] rounded-lg p-2">
+              Dia inteiro: o compromisso ocupa o dia todo na grade (os campos de hora ficam
+              desabilitados).
+            </p>
+          )}
 
           <div className="space-y-1">
             <Label className="text-xs font-semibold">Observações</Label>
@@ -275,17 +393,36 @@ export default function AppointmentEditDialog({
           {error && <p className="text-xs text-red-600">{error}</p>}
         </div>
 
-        <div className="flex justify-end gap-2 pt-2 border-t border-[#EDE3D8]">
-          <Button type="button" variant="outline" onClick={() => onOpenChange(false)}>
-            Cancelar
-          </Button>
-          <Button
-            type="button"
-            className="bg-[#C66B4D] text-white hover:bg-[#B25A3E]"
-            onClick={confirm}
-          >
-            Salvar alterações
-          </Button>
+        <div
+          className={`flex items-center gap-2 pt-2 border-t border-[#EDE3D8] ${
+            isComp && onDelete ? 'justify-between' : 'justify-end'
+          }`}
+        >
+          {isComp && onDelete ? (
+            <Button
+              type="button"
+              size="sm"
+              variant="outline"
+              className="text-xs text-red-600 border-red-200 hover:bg-red-50"
+              onClick={() => onDelete(appointment!.id)}
+            >
+              <Trash2 className="w-3.5 h-3.5 mr-1" /> Excluir
+            </Button>
+          ) : (
+            <span />
+          )}
+          <div className="flex gap-2">
+            <Button type="button" variant="outline" onClick={() => onOpenChange(false)}>
+              Cancelar
+            </Button>
+            <Button
+              type="button"
+              className="bg-[#C66B4D] text-white hover:bg-[#B25A3E]"
+              onClick={confirm}
+            >
+              Salvar alterações
+            </Button>
+          </div>
         </div>
       </DialogContent>
     </Dialog>

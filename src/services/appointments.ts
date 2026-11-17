@@ -68,6 +68,9 @@ export const STATUS_DOTS: Record<AppointmentStatus, string> = {
   remarcou: 'bg-cyan-500',
 }
 
+/** Tipo de entrada na agenda: consulta de paciente ou compromisso interno. */
+export type AppointmentEntryKind = 'consulta' | 'compromisso'
+
 export interface RescheduleHistoryEntry {
   from_date?: string
   from_time?: string
@@ -105,6 +108,12 @@ export interface AppointmentRecord {
   canceled_reason?: string
   rescheduled_from?: string
   reschedule_history?: RescheduleHistoryEntry[]
+  /** 'consulta' (padrão implícito nos registros antigos) | 'compromisso'. */
+  entry_kind?: AppointmentEntryKind
+  /** Compromisso: o "qual" (reunião, administrativo, pausa, curso…). */
+  entry_title?: string
+  /** Compromisso de dia inteiro (bloqueia a coluna do dia na grade). */
+  is_all_day?: boolean
   created: string
   updated: string
   expand?: {
@@ -121,8 +130,21 @@ export const getAppointments = (filter?: string) =>
     expand: 'patient,procedure,professional',
   })
 
+/** Duração do compromisso de dia inteiro (minutos) — cobre o expediente todo. */
+export const ALL_DAY_MINUTES = 24 * 60
+
 export const createAppointment = (data: Partial<AppointmentRecord>) =>
   pb.collection('appointments').create<AppointmentRecord>(data)
+
+/** É compromisso interno (não é consulta de paciente)? Registros antigos: consulta. */
+export function isCompromisso(app: AppointmentRecord): boolean {
+  return app.entry_kind === 'compromisso'
+}
+
+/** Rótulo curto do "qual" do compromisso (fallback: Compromisso). */
+export function compromissoTitulo(app: AppointmentRecord): string {
+  return (app.entry_title || '').trim() || 'Compromisso'
+}
 
 /**
  * Calcula o horário de fim a partir do início e da duração (minutos).

@@ -20,13 +20,20 @@ import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import AppointmentStatusBadge from '@/components/agenda/AppointmentStatusBadge'
 import MonthView from '@/components/agenda/MonthView'
-import { AppointmentChip, groupChips } from '@/components/agenda/CalendarGridChips'
+import {
+  AppointmentChip,
+  groupChips,
+  groupChipsWithClinicCompromissos,
+} from '@/components/agenda/CalendarGridChips'
 import { getWorkSchedule, saveWorkSchedule, DEFAULT_WORK_SCHEDULE } from '@/services/work_schedule'
 import {
   STATUS_LABELS,
+  isCompromisso,
+  compromissoTitulo,
   type AppointmentRecord,
   type AppointmentStatus,
 } from '@/services/appointments'
+import { professionalPastel } from '@/lib/professional-colors'
 import { isSlotFree } from '@/lib/agenda-status'
 import {
   CATEGORY_LABELS,
@@ -111,6 +118,8 @@ interface Props {
   onReschedule: (app: AppointmentRecord) => void
   onEdit: (app: AppointmentRecord) => void
   onWhatsApp: (app: AppointmentRecord) => void
+  /** Exclui definitivamente (usado por compromissos). */
+  onDelete?: (app: AppointmentRecord) => void
 }
 
 export default function CalendarGrid({
@@ -125,6 +134,7 @@ export default function CalendarGrid({
   onReschedule,
   onEdit,
   onWhatsApp,
+  onDelete,
 }: Props) {
   const today = new Date()
   const [period, setPeriod] = useState<GridPeriod>(initialPeriod)
@@ -267,6 +277,24 @@ export default function CalendarGrid({
   const nCols = period === 'day' ? cols.length : days.length
   const gridCols = `56px repeat(${nCols}, minmax(0,1fr))`
 
+  /** Dia inteiro: dia(s) em exibição com pelo menos um compromisso all-day. */
+  const allDaysShown = period === 'day' ? [cursor] : days
+  const allDayEntries = useMemo(() => {
+    const map = new Map<string, AppointmentRecord[]>()
+    for (const a of appointments) {
+      if (!isCompromisso(a) || !a.is_all_day) continue
+      const k = (a.date || '').slice(0, 10)
+      if (!k) continue
+      const arr = map.get(k)
+      if (arr) arr.push(a)
+      else map.set(k, [a])
+    }
+    return map
+  }, [appointments])
+
+  /** Profissional (id ou nome) → cor pastel — consistente em Dia/Semana/Mês. */
+  const pastelFor = (id?: string, name?: string) => professionalPastel(id || name || '')
+
   return (
     <div className="space-y-3">
       {/* Toolbar: navegação + período + expediente */}
@@ -305,10 +333,28 @@ export default function CalendarGrid({
         </Button>
       </div>
 
-      {/* Legenda de cores por categoria de tratamento */}
+      {/* Legenda: identificação por PROFICIONAL (cor pastel fixa) + categorias de tratamento (barra lateral) */}
       <div className="flex flex-wrap items-center gap-x-3 gap-y-1 bg-white border border-[#EDE3D8] rounded-xl px-3 py-1.5 shadow-subtle">
         <span className="text-[10px] font-semibold uppercase tracking-wide text-[#6B4F42]">
-          Categorias:
+          Profissionais:
+        </span>
+        {cols
+          .filter((p) => p.id)
+          .map((p) => {
+            const c = pastelFor(p.id, p.name)
+            return (
+              <span key={p.id} className="flex items-center gap-1 text-[10px] text-[#6B4F42]">
+                <span
+                  className="w-3 h-3 rounded border border-black/10 shrink-0"
+                  style={{ backgroundColor: c.bg, borderLeft: `3px solid ${c.border}` }}
+                />
+                {p.name}
+              </span>
+            )
+          })}
+        <span className="w-px h-4 bg-[#EDE3D8] mx-1" />
+        <span className="text-[10px] font-semibold uppercase tracking-wide text-[#6B4F42]">
+          Categorias (barra lateral):
         </span>
         {(Object.keys(CATEGORY_LABELS) as AppointmentCategory[]).map((cat) => (
           <span key={cat} className="flex items-center gap-1 text-[10px] text-[#6B4F42]">
@@ -316,6 +362,11 @@ export default function CalendarGrid({
             {CATEGORY_LABELS[cat]}
           </span>
         ))}
+        <span className="w-px h-4 bg-[#EDE3D8] mx-1" />
+        <span className="flex items-center gap-1 text-[10px] text-[#6B4F42]">
+          <span className="w-3 h-3 rounded border border-dashed border-[#6B4F42]/50 bg-[#FAF6F0] shrink-0" />
+          Compromisso (sem paciente)
+        </span>
       </div>
 
       {/* ============ VISÃO MÊS ============ */}
@@ -332,6 +383,67 @@ export default function CalendarGrid({
         />
       )}
 
+      {/* ============ FAIXA DE DIA INTEIRO (Dia/Semana) ============ */}
+      {period !== 'month' &&
+        allDaysShown.some((d) => (allDayEntries.get(toISO(d)) || []).length > 0) && (
+          <div className="border border-[#EDE3D8] rounded-xl bg-white overflow-hidden">
+            <div className="overflow-x-auto">
+              <div style={{ minWidth: period === 'day' ? Math.max(640, nCols * 170) : 780 }}>
+                <div
+                  className="grid border-b border-[#EDE3D8] bg-[#FAF6F0]"
+                  style={{ gridTemplateColumns: gridCols }}
+                >
+                  <div className="p-2 text-[10px] font-semibold text-[#6B4F42] border-r border-[#EDE3D8]">
+                    Dia todo
+                  </div>
+                  {allDaysShown.map((d) => {
+                    const iso = toISO(d)
+                    const entries = allDayEntries.get(iso) || []
+                    return (
+                      <div
+                        key={iso}
+                        className={cn(
+                          'p-1.5 border-r last:border-r-0 border-[#EDE3D8] space-y-1 min-h-[2.25rem]',
+                          isSameDay(d, today) && 'bg-[#FFF3D6]/60',
+                        )}
+                      >
+                        {entries.map((a) => {
+                          const c = pastelFor(a.professional, a.expand?.professional?.name)
+                          const cat = categorizeAppointment(a)
+                          return (
+                            <button
+                              key={a.id}
+                              type="button"
+                              className={cn(
+                                'w-full text-left rounded border border-dashed px-2 py-1 text-[10px] leading-tight hover:shadow-sm flex items-stretch overflow-hidden',
+                              )}
+                              style={{ backgroundColor: c.bg, borderColor: c.border }}
+                              onClick={() => setDetail(a)}
+                              title={`${compromissoTitulo(a)} — dia inteiro${
+                                a.expand?.professional?.name
+                                  ? ` — ${a.expand.professional.name}`
+                                  : ''
+                              }`}
+                            >
+                              <span
+                                className="w-1 shrink-0 rounded-full mr-1.5"
+                                style={{ backgroundColor: CATEGORY_STYLES[cat].dotColor }}
+                              />
+                              <span className="truncate font-medium text-[#2D1B14]">
+                                {compromissoTitulo(a)}
+                              </span>
+                            </button>
+                          )
+                        })}
+                      </div>
+                    )
+                  })}
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
+
       {/* ============ VISÃO DIA/SEMANA ============ */}
       {period !== 'month' && (
         <div className="border border-[#EDE3D8] rounded-xl bg-white overflow-hidden">
@@ -346,17 +458,21 @@ export default function CalendarGrid({
                   Horário
                 </div>
                 {period === 'day'
-                  ? cols.map((p) => (
-                      <div
-                        key={p.id || 'none'}
-                        className="p-2 text-center border-r last:border-r-0 border-[#EDE3D8]"
-                      >
-                        <p className="text-xs font-semibold text-[#2D1B14] truncate">{p.name}</p>
-                        {p.specialty && (
-                          <p className="text-[10px] text-[#6B4F42] truncate">{p.specialty}</p>
-                        )}
-                      </div>
-                    ))
+                  ? cols.map((p) => {
+                      const c = pastelFor(p.id, p.name)
+                      return (
+                        <div
+                          key={p.id || 'none'}
+                          className="p-2 text-center border-r last:border-r-0 border-[#EDE3D8]"
+                          style={p.id ? { backgroundColor: c.bg } : undefined}
+                        >
+                          <p className="text-xs font-semibold text-[#2D1B14] truncate">{p.name}</p>
+                          {p.specialty && (
+                            <p className="text-[10px] text-[#6B4F42] truncate">{p.specialty}</p>
+                          )}
+                        </div>
+                      )
+                    })
                   : days.map((d) => {
                       const iso = toISO(d)
                       const n = appointments.filter(
@@ -408,16 +524,22 @@ export default function CalendarGrid({
                         ? cols.map((p) => {
                             const iso = toISO(cursor)
                             const bucket = buckets.get(`${iso}T${time}`)
+                            const colPastel = p.id ? pastelFor(p.id, p.name) : null
                             return (
                               <SlotCell
                                 key={p.id || 'none'}
                                 dateISO={iso}
                                 time={time}
                                 professionalId={p.id}
+                                pastel={colPastel}
                                 bucket={bucket}
-                                chips={groupChips(appointments, iso, p.id, slots, work.end).filter(
-                                  (g) => g.row === slots.indexOf(min),
-                                )}
+                                chips={groupChipsWithClinicCompromissos(
+                                  appointments,
+                                  iso,
+                                  p.id,
+                                  slots,
+                                  work.end,
+                                ).filter((g) => g.row === slots.indexOf(min))}
                                 onCreateAt={onCreateAt}
                                 onOpenDetail={setDetail}
                               />
@@ -432,6 +554,7 @@ export default function CalendarGrid({
                                 dateISO={diso}
                                 time={time}
                                 professionalId=""
+                                pastel={null}
                                 bucket={bucket}
                                 chips={groupChips(appointments, diso, '', slots, work.end).filter(
                                   (g) => g.row === slots.indexOf(min),
@@ -450,45 +573,59 @@ export default function CalendarGrid({
         </div>
       )}
 
-      {/* Detalhe do agendamento ao clicar no chip da grade */}
+      {/* Detalhe do agendamento/compromisso ao clicar no chip da grade */}
       <Dialog open={!!detail} onOpenChange={(o) => !o && setDetail(null)}>
         <DialogContent className="max-w-md bg-white border-[#EDE3D8]">
           <DialogHeader>
             <DialogTitle className="font-serif-title text-[#2D1B14] flex items-center gap-2">
-              <CalendarDays className="w-4 h-4 text-[#C66B4D]" /> Detalhe da consulta
+              <CalendarDays className="w-4 h-4 text-[#C66B4D]" />{' '}
+              {detail && isCompromisso(detail) ? 'Detalhe do compromisso' : 'Detalhe da consulta'}
             </DialogTitle>
           </DialogHeader>
           {detail && (
             <div className="space-y-3 py-1">
               <div className="text-xs bg-[#FAF6F0] border border-[#EDE3D8] rounded-lg p-3 space-y-0.5 text-[#6B4F42]">
-                <p className="font-semibold text-sm text-[#2D1B14]">
-                  {detail.expand?.patient?.name || 'Paciente'}
-                </p>
-                <p>{detail.expand?.procedure?.name || 'Atendimento Geral'}</p>
+                {isCompromisso(detail) ? (
+                  <p className="font-semibold text-sm text-[#2D1B14]">
+                    {compromissoTitulo(detail)}
+                    {detail.is_all_day ? ' — dia inteiro' : ''}
+                  </p>
+                ) : (
+                  <p className="font-semibold text-sm text-[#2D1B14]">
+                    {detail.expand?.patient?.name || 'Paciente'}
+                  </p>
+                )}
+                {!isCompromisso(detail) && (
+                  <p>{detail.expand?.procedure?.name || 'Atendimento Geral'}</p>
+                )}
                 <p>
-                  {(detail.date || '').slice(0, 10)} das {detail.start_time}
-                  {detail.end_time ? ` às ${detail.end_time}` : ''}
+                  {(detail.date || '').slice(0, 10)}
+                  {detail.is_all_day
+                    ? ' — dia inteiro'
+                    : ` das ${detail.start_time}${detail.end_time ? ` às ${detail.end_time}` : ''}`}
                   {detail.expand?.professional?.name ? ` — ${detail.expand.professional.name}` : ''}
                 </p>
                 {detail.notes && <p className="whitespace-pre-wrap">{detail.notes}</p>}
               </div>
-              <div className="flex items-center gap-2 flex-wrap">
-                <AppointmentStatusBadge
-                  status={detail.status}
-                  patientName={detail.expand?.patient?.name || 'Paciente'}
-                  onStatusSelect={(s) => {
-                    onStatusSelect(detail, s)
-                    setDetail(null)
-                  }}
-                  onRequestCancel={(kind) => {
-                    onRequestCancel(detail, kind)
-                    setDetail(null)
-                  }}
-                />
-                <span className="text-[11px] text-[#6B4F42]">
-                  Status atual: {STATUS_LABELS[detail.status]}
-                </span>
-              </div>
+              {!isCompromisso(detail) && (
+                <div className="flex items-center gap-2 flex-wrap">
+                  <AppointmentStatusBadge
+                    status={detail.status}
+                    patientName={detail.expand?.patient?.name || 'Paciente'}
+                    onStatusSelect={(s) => {
+                      onStatusSelect(detail, s)
+                      setDetail(null)
+                    }}
+                    onRequestCancel={(kind) => {
+                      onRequestCancel(detail, kind)
+                      setDetail(null)
+                    }}
+                  />
+                  <span className="text-[11px] text-[#6B4F42]">
+                    Status atual: {STATUS_LABELS[detail.status]}
+                  </span>
+                </div>
+              )}
               <div className="flex justify-end gap-2 pt-2 border-t border-[#EDE3D8]">
                 <Button
                   size="sm"
@@ -501,28 +638,46 @@ export default function CalendarGrid({
                 >
                   Editar
                 </Button>
-                <Button
-                  size="sm"
-                  variant="outline"
-                  className="text-xs"
-                  onClick={() => {
-                    onReschedule(detail)
-                    setDetail(null)
-                  }}
-                >
-                  Remarcar
-                </Button>
-                <Button
-                  size="sm"
-                  variant="outline"
-                  className="text-xs text-emerald-700 border-emerald-300 hover:bg-emerald-50"
-                  onClick={() => {
-                    onWhatsApp(detail)
-                    setDetail(null)
-                  }}
-                >
-                  Lembrete WhatsApp
-                </Button>
+                {isCompromisso(detail) ? (
+                  onDelete && (
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      className="text-xs text-red-600 border-red-200 hover:bg-red-50"
+                      onClick={() => {
+                        onDelete(detail)
+                        setDetail(null)
+                      }}
+                    >
+                      Excluir
+                    </Button>
+                  )
+                ) : (
+                  <>
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      className="text-xs"
+                      onClick={() => {
+                        onReschedule(detail)
+                        setDetail(null)
+                      }}
+                    >
+                      Remarcar
+                    </Button>
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      className="text-xs text-emerald-700 border-emerald-300 hover:bg-emerald-50"
+                      onClick={() => {
+                        onWhatsApp(detail)
+                        setDetail(null)
+                      }}
+                    >
+                      Lembrete WhatsApp
+                    </Button>
+                  </>
+                )}
               </div>
             </div>
           )}
@@ -537,6 +692,7 @@ function SlotCell({
   dateISO,
   time,
   professionalId,
+  pastel,
   bucket,
   chips,
   onCreateAt,
@@ -545,6 +701,8 @@ function SlotCell({
   dateISO: string
   time: string
   professionalId: string
+  /** Cor pastel da coluna (profissional) — tinge o hover das células livres. */
+  pastel: { bg: string; border: string; text: string } | null
   bucket: AppointmentRecord[] | undefined
   chips: { row: number; span: number; apps: AppointmentRecord[] }[]
   onCreateAt: (opts: { date: string; time: string; professionalId: string }) => void
@@ -560,12 +718,23 @@ function SlotCell({
     <div
       className={cn(
         'relative border-r last:border-r-0 border-[#EDE3D8] px-1 py-1 min-h-[2.25rem] group',
-        clickable && 'cursor-pointer hover:bg-[#FFF3D6]/60',
+        clickable && 'cursor-pointer',
       )}
+      style={
+        clickable
+          ? ({ '--hover-tint': pastel ? pastel.bg : '#FFF3D6' } as React.CSSProperties)
+          : undefined
+      }
       onClick={() => {
         if (clickable) onCreateAt({ date: dateISO, time, professionalId })
       }}
       title={clickable ? `${dateISO} ${time} — clique para agendar` : undefined}
+      onMouseEnter={(e) => {
+        if (clickable) e.currentTarget.style.backgroundColor = pastel ? pastel.bg : '#FFF3D6'
+      }}
+      onMouseLeave={(e) => {
+        if (clickable) e.currentTarget.style.backgroundColor = ''
+      }}
     >
       {chips.map((g) =>
         g.apps.map((app) => (

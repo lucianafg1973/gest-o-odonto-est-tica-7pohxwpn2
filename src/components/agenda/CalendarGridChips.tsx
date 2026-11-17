@@ -2,16 +2,23 @@
  * Chips de agendamento posicionados na grade (Dia/Semana).
  * Um agendamento ocupa tantas fileiras de 30 min quanto a sua duração
  * (ex.: 08:00–08:40 ocupa duas fileiras: 08:00 e 08:30).
- * Cor de FUNDO pela categoria do tratamento (vermelho=cirurgia, azul=profilaxia,
- * dourado=HOF, verde=ortodontia); o STATUS continua com seu selo próprio.
+ * Cor de FUNDO = cor PASTEL do PROFISSIONAL (identificação rápida de quem atende);
+ * a CATEGORIA do tratamento continua visível como uma barra lateral fina à esquerda
+ * (vermelho=cirurgia, azul=profilaxia, dourado=HOF, verde=ortodontia);
+ * o STATUS continua com seu selo próprio (ponto no canto).
+ * Compromissos internos usam o pastel do profissional (ou neutro, sem profissional)
+ * com borda TRACEJADA para se diferenciarem das consultas.
  */
 import {
   STATUS_LABELS,
   type AppointmentRecord,
   type AppointmentStatus,
+  isCompromisso,
+  compromissoTitulo,
 } from '@/services/appointments'
 import { durationMinutes } from '@/services/appointments'
 import { categorizeAppointment, CATEGORY_STYLES, CATEGORY_LABELS } from '@/lib/appointment-category'
+import { professionalPastel, NEUTRAL_PASTEL } from '@/lib/professional-colors'
 import { isSlotFree } from '@/lib/agenda-status'
 import { cn } from '@/lib/utils'
 
@@ -36,6 +43,32 @@ export function groupChips(
   slots: number[],
   workEnd: number,
 ): ChipGroup[] {
+  return groupChipsInner(appointments, iso, professionalId, slots, workEnd, false)
+}
+
+/**
+ * Igual a groupChips, mas incluindo compromissos internos SEM profissional em TODAS
+ * as colunas (compromisso de clínica bloqueia o horário para todos os profissionais).
+ * Compromissos COM profissional aparecem só na coluna do seu profissional.
+ */
+export function groupChipsWithClinicCompromissos(
+  appointments: AppointmentRecord[],
+  iso: string,
+  professionalId: string,
+  slots: number[],
+  workEnd: number,
+): ChipGroup[] {
+  return groupChipsInner(appointments, iso, professionalId, slots, workEnd, true)
+}
+
+function groupChipsInner(
+  appointments: AppointmentRecord[],
+  iso: string,
+  professionalId: string,
+  slots: number[],
+  workEnd: number,
+  includeClinicCompromissos: boolean,
+): ChipGroup[] {
   const first = slots[0]
   if (first === undefined) return []
   const lastRow = slots.length
@@ -44,9 +77,22 @@ export function groupChips(
   for (const app of appointments) {
     if ((app.date || '').slice(0, 10) !== iso) continue
     if (isSlotFree(app)) continue
-    // Na visão de dia (coluna por profissional) a ocupação é POR COLUNA:
-    // agendamento de outro profissional não bloqueia esta coluna.
-    if (professionalId && app.professional !== professionalId) continue
+    if (isCompromisso(app)) {
+      // Dia inteiro NÃO vira chip de horário — tem faixa própria na grade.
+      if (app.is_all_day) continue
+      // Compromisso de outro profissional não bloqueia esta coluna; o da clínica
+      // (sem profissional) bloqueia todas as colunas quando solicitado.
+      if (
+        professionalId &&
+        app.professional !== professionalId &&
+        !(includeClinicCompromissos && !app.professional)
+      )
+        continue
+    } else {
+      // Na visão de dia (coluna por profissional) a ocupação é POR COLUNA:
+      // agendamento de outro profissional não bloqueia esta coluna.
+      if (professionalId && app.professional !== professionalId) continue
+    }
 
     const [h, m] = (app.start_time || '').split(':').map(Number)
     const startRaw = (h || 0) * 60 + (m || 0)
@@ -70,7 +116,7 @@ export function groupChips(
   return [...groups.values()].sort((a, b) => a.row - b.row)
 }
 
-/** Selo compacto do STATUS dentro do chip colorido por categoria. */
+/** Selo compacto do STATUS dentro do chip (ponto no canto, legível sobre pastel). */
 function StatusSeal({ status }: { status: AppointmentStatus }) {
   const dot =
     status === 'concluido'
@@ -94,8 +140,8 @@ function StatusSeal({ status }: { status: AppointmentStatus }) {
 }
 
 /**
- * Chip colorido pela CATEGORIA do tratamento; o status aparece como um pequeno
- * ponto escuro (selo) no canto — continua legível sobre qualquer cor de fundo.
+ * Chip da grade: FUNDO na cor pastel do profissional (ou neutro p/ compromisso),
+ * barra lateral fina com a cor da CATEGORIA e selo de STATUS no canto.
  */
 export function AppointmentChip({
   app,
@@ -106,35 +152,64 @@ export function AppointmentChip({
   span: number
   onOpenDetail: (app: AppointmentRecord) => void
 }) {
-  const style = CATEGORY_STYLES[categorizeAppointment(app)]
+  const compromisso = isCompromisso(app)
+  const cat = categorizeAppointment(app)
+  const catStyle = CATEGORY_STYLES[cat]
+  const pastel = professionalPastel(app.professional)
   const end = app.end_time ? `–${app.end_time.slice(0, 5)}` : ''
+
+  const mainText = compromisso
+    ? `${compromissoTitulo(app)}`
+    : app.expand?.patient?.name || 'Paciente'
+  const subText = compromisso
+    ? app.is_all_day
+      ? 'Dia inteiro · Compromisso'
+      : `${(app.start_time || '').slice(0, 5)}${end} · Compromisso`
+    : `${(app.start_time || '').slice(0, 5)}${end} · ${
+        app.expand?.procedure?.name || 'Atendimento Geral'
+      }`
+  const tooltip = compromisso
+    ? `${compromissoTitulo(app)} — ${(app.start_time || '').slice(0, 5)}${end}${
+        app.is_all_day ? ' (dia inteiro)' : ''
+      }`
+    : `${app.expand?.patient?.name || 'Paciente'} — ${(app.start_time || '').slice(0, 5)}${end} — ${
+        app.expand?.procedure?.name || 'Atendimento Geral'
+      } — ${CATEGORY_LABELS[cat]} — Status: ${STATUS_LABELS[app.status]}`
+
   return (
     <button
       type="button"
       className={cn(
-        'relative w-full text-left border rounded-md px-1.5 py-0.5 truncate hover:shadow-sm transition-shadow',
-        style.chip,
-        style.stripe,
+        'relative w-full text-left border rounded-md px-1.5 py-0.5 pl-2 truncate hover:shadow-sm transition-shadow overflow-hidden',
+        compromisso && 'border-dashed',
       )}
-      title={`${app.expand?.patient?.name || 'Paciente'} — ${(app.start_time || '').slice(0, 5)}${end} — ${
-        app.expand?.procedure?.name || 'Atendimento Geral'
-      } — ${CATEGORY_LABELS[categorizeAppointment(app)]} — Status: ${STATUS_LABELS[app.status]}`}
+      style={{
+        backgroundColor: pastel.bg,
+        borderColor: pastel.border,
+        color: pastel.text,
+        height: `${span * 2.25 - 0.15}rem`,
+      }}
+      title={tooltip}
       onClick={(e) => {
         e.stopPropagation()
         onOpenDetail(app)
       }}
-      style={{ height: `${span * 2.25 - 0.15}rem` }}
     >
+      {/* Barra lateral fina: cor da CATEGORIA (consultas) ou cinza (compromissos) */}
+      <span
+        aria-hidden
+        className={cn('absolute left-0 top-0 bottom-0 w-1', !compromisso && catStyle.stripe)}
+        style={compromisso ? { backgroundColor: pastel.dot } : undefined}
+      />
       <span className="block text-[10px] font-semibold leading-tight truncate pr-2">
-        {app.expand?.patient?.name || 'Paciente'}
+        {mainText}
       </span>
-      <span className="block text-[9px] opacity-80 leading-tight truncate pr-2">
-        {(app.start_time || '').slice(0, 5)}
-        {end} · {app.expand?.procedure?.name || 'Atendimento Geral'}
-      </span>
-      <span className="absolute right-1 top-0.5" title={`Status: ${STATUS_LABELS[app.status]}`}>
-        <StatusSeal status={app.status} />
-      </span>
+      <span className="block text-[9px] opacity-80 leading-tight truncate pr-2">{subText}</span>
+      {!compromisso && (
+        <span className="absolute right-1 top-0.5" title={`Status: ${STATUS_LABELS[app.status]}`}>
+          <StatusSeal status={app.status} />
+        </span>
+      )}
     </button>
   )
 }

@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2026-11-17T02:04:54.399Z",
+  "generatedAt": "2026-11-17T02:36:25.335Z",
   "collections": [
     {
       "name": "users",
@@ -464,7 +464,7 @@
         {
           "name": "patient",
           "type": "relation",
-          "required": true,
+          "required": false,
           "system": false,
           "collectionRef": "patients"
         },
@@ -571,6 +571,25 @@
         {
           "name": "reschedule_history",
           "type": "json",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "entry_kind",
+          "type": "select",
+          "required": false,
+          "system": false,
+          "selectValues": ["consulta", "compromisso"]
+        },
+        {
+          "name": "entry_title",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "is_all_day",
+          "type": "bool",
           "required": false,
           "system": false
         }
