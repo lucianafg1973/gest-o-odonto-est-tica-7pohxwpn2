@@ -95,6 +95,19 @@ export default function Financial() {
   const substituirProcedimento = (p: ProcedureRecord) =>
     setProcedures((prev) => prev.map((x) => (x.id === p.id ? p : x)))
 
+  /**
+   * Novo procedimento criado na planilha inteligente: entra IMEDIATAMENTE na
+   * lista local (tabela de precificação/lucratividade sem recarregar) e segue
+   * no mesmo catálogo da coleção procedures — os planejamentos o veem na
+   * próxima busca/recarga.
+   */
+  const adicionarProcedimento = (p: ProcedureRecord) =>
+    setProcedures((prev) =>
+      prev.some((x) => x.id === p.id)
+        ? prev
+        : [...prev, p].sort((a, b) => (a.name || '').localeCompare(b.name || '', 'pt-BR')),
+    )
+
   const custosMensais = items
     .filter((i) => i.active !== false)
     .reduce((s, i) => s + (Number(i.amount) || 0), 0)
@@ -197,6 +210,7 @@ export default function Financial() {
             procedures={procedures}
             custoMinuto={calculo.minuteCost}
             onProcedureUpdate={substituirProcedimento}
+            onProcedureCreate={adicionarProcedimento}
           />
         </div>
       )}

@@ -7,11 +7,15 @@ import { updateProcedure } from '@/services/procedures'
 import { ProcedureRecord } from '@/services/procedures'
 import { formatCurrency } from '@/lib/price-calculation'
 import { custosProcedimento, descontoMaximoC, precoSugeridoC } from '@/lib/precificacao'
+import { InserirProcedimentoDialog } from '@/components/pricing/InserirProcedimentoDialog'
+import { Plus } from 'lucide-react'
 
 interface Props {
   procedures: ProcedureRecord[]
   custoMinuto: number
   onProcedureUpdate: (p: ProcedureRecord) => void
+  /** Insere um NOVO procedimento no catálogo (botão da planilha inteligente). */
+  onProcedureCreate?: (p: ProcedureRecord) => void
 }
 
 /**
@@ -21,9 +25,15 @@ interface Props {
  * muda quando a proprietária edita a própria coluna Preço — os custos nunca o
  * tocam; cálculo 100% em centavos).
  */
-export function LucratividadeSheet({ procedures, custoMinuto, onProcedureUpdate }: Props) {
+export function LucratividadeSheet({
+  procedures,
+  custoMinuto,
+  onProcedureUpdate,
+  onProcedureCreate,
+}: Props) {
   const [busca, setBusca] = useState('')
   const [busy, setBusy] = useState<string | null>(null)
+  const [inserirOpen, setInserirOpen] = useState(false)
 
   const lista = procedures.filter((p) => p.name?.toLowerCase().includes(busca.trim().toLowerCase()))
 
@@ -66,12 +76,23 @@ export function LucratividadeSheet({ procedures, custoMinuto, onProcedureUpdate 
         <CardTitle className="font-serif-title text-base font-bold text-[#2D1B14]">
           Situação Atual — lucratividade por procedimento
         </CardTitle>
-        <Input
-          placeholder="Buscar procedimento…"
-          value={busca}
-          onChange={(e) => setBusca(e.target.value)}
-          className="h-8 text-xs bg-white sm:w-56"
-        />
+        <div className="flex items-center gap-2">
+          {onProcedureCreate && (
+            <Button
+              size="sm"
+              className="btn-terracotta-gold text-xs"
+              onClick={() => setInserirOpen(true)}
+            >
+              <Plus className="w-3.5 h-3.5 mr-1.5" /> Inserir procedimento
+            </Button>
+          )}
+          <Input
+            placeholder="Buscar procedimento…"
+            value={busca}
+            onChange={(e) => setBusca(e.target.value)}
+            className="h-8 text-xs bg-white sm:w-56"
+          />
+        </div>
       </CardHeader>
       <CardContent>
         <div className="overflow-x-auto rounded-xl border border-[#EDE3D8] bg-white">
@@ -163,6 +184,15 @@ export function LucratividadeSheet({ procedures, custoMinuto, onProcedureUpdate 
             </tbody>
           </table>
         </div>
+        {onProcedureCreate && (
+          <InserirProcedimentoDialog
+            open={inserirOpen}
+            custoMinuto={custoMinuto}
+            proceduresExistentes={procedures}
+            onOpenChange={setInserirOpen}
+            onCreated={onProcedureCreate}
+          />
+        )}
       </CardContent>
     </Card>
   )
@@ -173,12 +203,20 @@ export function LucratividadeSheet({ procedures, custoMinuto, onProcedureUpdate 
  * margem ALVO configurada e o desconto máximo possível antes de cair abaixo da
  * margem MÍNIMA (útil para campanhas). Nada aqui altera o preço oficial — só
  * grava os parâmetros min/target_margin_percent quando a proprietária os edita.
+ * O botão "Inserir procedimento" fica aqui (pedido da proprietária): abre o
+ * mesmo diálogo da seção "Situação Atual" e grava no mesmo catálogo.
  */
-export function PlanilhaInteligente({ procedures, custoMinuto, onProcedureUpdate }: Props) {
+export function PlanilhaInteligente({
+  procedures,
+  custoMinuto,
+  onProcedureUpdate,
+  onProcedureCreate,
+}: Props) {
   const [margemAlvoGlobal, setMargemAlvoGlobal] = useState(30)
   const [margemMinGlobal, setMargemMinGlobal] = useState(20)
   const [busca, setBusca] = useState('')
   const [busy, setBusy] = useState<string | null>(null)
+  const [inserirOpen, setInserirOpen] = useState(false)
 
   const lista = procedures.filter((p) => p.name?.toLowerCase().includes(busca.trim().toLowerCase()))
 
@@ -194,10 +232,19 @@ export function PlanilhaInteligente({ procedures, custoMinuto, onProcedureUpdate
 
   return (
     <Card className="card-warm">
-      <CardHeader className="pb-2">
+      <CardHeader className="pb-2 flex flex-col sm:flex-row sm:items-center gap-2 justify-between">
         <CardTitle className="font-serif-title text-base font-bold text-[#2D1B14]">
           Planilha inteligente — preço sugerido e desconto máximo
         </CardTitle>
+        {onProcedureCreate && (
+          <Button
+            size="sm"
+            className="btn-terracotta-gold text-xs whitespace-nowrap"
+            onClick={() => setInserirOpen(true)}
+          >
+            <Plus className="w-3.5 h-3.5 mr-1.5" /> Inserir procedimento
+          </Button>
+        )}
       </CardHeader>
       <CardContent className="space-y-3">
         <p className="text-xs text-[#6B4F42]">
@@ -364,6 +411,15 @@ export function PlanilhaInteligente({ procedures, custoMinuto, onProcedureUpdate
             </tbody>
           </table>
         </div>
+        {onProcedureCreate && (
+          <InserirProcedimentoDialog
+            open={inserirOpen}
+            custoMinuto={custoMinuto}
+            proceduresExistentes={procedures}
+            onOpenChange={setInserirOpen}
+            onCreated={onProcedureCreate}
+          />
+        )}
       </CardContent>
     </Card>
   )
