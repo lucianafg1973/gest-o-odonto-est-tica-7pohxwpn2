@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
+import { AutoWidthNumberInput } from '@/components/pricing/AutoWidthNumberInput'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { updateProcedure } from '@/services/procedures'
@@ -50,11 +51,10 @@ export function LucratividadeSheet({
   const celulaNum = (
     p: ProcedureRecord,
     campo: keyof ProcedureRecord & string,
-    largura = 'w-20',
+    _largura = 'w-20',
     sufixo = '',
   ) => (
-    <Input
-      type="number"
+    <AutoWidthNumberInput
       min={0}
       step={sufixo === '%' ? '1' : '0.01'}
       value={String(p[campo] ?? '')}
@@ -65,7 +65,9 @@ export function LucratividadeSheet({
         const v = Number(e.target.value) || 0
         if (v !== Number(p[campo] ?? 0)) salvar(p, { [campo]: v } as Partial<ProcedureRecord>)
       }}
-      className={`h-7 text-xs text-right bg-transparent border-transparent hover:border-[#EDE3D8] ${largura}`}
+      minCh={sufixo === '%' ? 3 : 5}
+      maxCh={14}
+      className="h-7 text-xs text-right bg-transparent border-transparent hover:border-[#EDE3D8]"
       disabled={busy === p.id}
     />
   )
@@ -258,26 +260,24 @@ export function PlanilhaInteligente({
             <label className="text-[10px] uppercase text-[#6B4F42] font-semibold">
               Margem alvo padrão (%)
             </label>
-            <Input
-              type="number"
+            <AutoWidthNumberInput
               min={0}
               max={90}
               value={margemAlvoGlobal}
               onChange={(e) => setMargemAlvoGlobal(Number(e.target.value) || 0)}
-              className="h-8 w-24 text-xs bg-white"
+              className="h-8 text-xs bg-white"
             />
           </div>
           <div>
             <label className="text-[10px] uppercase text-[#6B4F42] font-semibold">
               Margem mínima padrão (%)
             </label>
-            <Input
-              type="number"
+            <AutoWidthNumberInput
               min={0}
               max={90}
               value={margemMinGlobal}
               onChange={(e) => setMargemMinGlobal(Number(e.target.value) || 0)}
-              className="h-8 w-24 text-xs bg-white"
+              className="h-8 text-xs bg-white"
             />
           </div>
           <div className="flex-1 min-w-40">
@@ -341,8 +341,7 @@ export function PlanilhaInteligente({
                       )}
                     </td>
                     <td className="py-1 px-1 text-right">
-                      <Input
-                        type="number"
+                      <AutoWidthNumberInput
                         min={0}
                         max={90}
                         value={String(p.target_margin_percent ?? '')}
@@ -358,15 +357,18 @@ export function PlanilhaInteligente({
                           if (v && v !== (p.target_margin_percent ?? 0))
                             salvar(p, { target_margin_percent: v })
                         }}
-                        className="h-7 w-16 text-xs text-right bg-transparent border-transparent hover:border-[#EDE3D8]"
+                        minCh={3}
+                        maxCh={6}
+                        className="h-7 text-xs text-right bg-transparent border-transparent hover:border-[#EDE3D8]"
                         disabled={busy === p.id}
                       />
                     </td>
                     <td className="py-1 px-1 text-right">
-                      <Input
-                        type="number"
+                      <AutoWidthNumberInput
                         min={0}
                         max={90}
+                        minCh={3}
+                        maxCh={6}
                         value={String(p.min_margin_percent ?? '')}
                         placeholder={String(margemMinGlobal)}
                         onChange={(e) =>
@@ -380,7 +382,7 @@ export function PlanilhaInteligente({
                           if (v && v !== (p.min_margin_percent ?? 0))
                             salvar(p, { min_margin_percent: v })
                         }}
-                        className="h-7 w-16 text-xs text-right bg-transparent border-transparent hover:border-[#EDE3D8]"
+                        className="h-7 text-xs text-right bg-transparent border-transparent hover:border-[#EDE3D8]"
                         disabled={busy === p.id}
                       />
                     </td>

@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from 'react'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
+import { AutoWidthNumberInput } from '@/components/pricing/AutoWidthNumberInput'
 import {
   createCostItem,
   deleteCostItem,
@@ -110,10 +111,11 @@ export function CustosFixosSheet({ items, onChange }: Props) {
                     />
                   </td>
                   <td className="py-1 px-3 text-right min-w-40">
-                    <Input
-                      type="number"
+                    <AutoWidthNumberInput
                       min={0}
                       step="0.01"
+                      minCh={8}
+                      maxCh={18}
                       value={String(row.amount ?? '')}
                       onChange={(e) =>
                         onChange(
@@ -126,7 +128,7 @@ export function CustosFixosSheet({ items, onChange }: Props) {
                         Number(e.target.value) !== row.amount &&
                         atualizar(row, { amount: Number(e.target.value) || 0 })
                       }
-                      className="h-7 text-xs text-right bg-transparent border-transparent hover:border-[#EDE3D8] w-full max-w-full"
+                      className="h-7 text-xs text-right bg-transparent border-transparent hover:border-[#EDE3D8]"
                       disabled={busy === row.id}
                     />
                   </td>
@@ -172,11 +174,12 @@ export function CustosFixosSheet({ items, onChange }: Props) {
               className="h-8 text-xs bg-white"
             />
           </div>
-          <div className="w-32">
-            <Input
-              type="number"
+          <div>
+            <AutoWidthNumberInput
               min={0}
               step="0.01"
+              minCh={8}
+              maxCh={18}
               placeholder="0,00"
               value={novoValor}
               onChange={(e) => setNovoValor(e.target.value)}
@@ -243,8 +246,7 @@ export function DerivacaoHoraClinica({
             <label className="text-[10px] uppercase text-[#6B4F42] font-semibold">
               Total de Horas de Atendimento por Mês
             </label>
-            <Input
-              type="number"
+            <AutoWidthNumberInput
               min={0}
               value={horasDisponiveis}
               onChange={(e) => onHorasChange(Number(e.target.value) || 0)}
@@ -255,8 +257,7 @@ export function DerivacaoHoraClinica({
             <label className="text-[10px] uppercase text-[#6B4F42] font-semibold">
               Ociosidade / faltas / desmarcados (%)
             </label>
-            <Input
-              type="number"
+            <AutoWidthNumberInput
               min={0}
               max={100}
               value={ociosidade}
@@ -268,8 +269,7 @@ export function DerivacaoHoraClinica({
             <label className="text-[10px] uppercase text-[#6B4F42] font-semibold">
               Fator de avaliação (% — aumenta custo/h)
             </label>
-            <Input
-              type="number"
+            <AutoWidthNumberInput
               min={0}
               value={fatorAvaliacao}
               onChange={(e) => onFatorChange(Number(e.target.value) || 0)}
