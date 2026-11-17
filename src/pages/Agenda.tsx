@@ -304,9 +304,18 @@ export default function Agenda() {
   }
 
   /** Remarcação: preserva vínculo com o original e o histórico; nunca exclui o registro. */
-  const handleRescheduleConfirm = async (newDate: string, newTime: string, reason: string) => {
+  const handleRescheduleConfirm = (newDate: string, newTime: string, reason: string) => {
     if (!rescheduleTarget) return
-    const app = rescheduleTarget
+    performReschedule(rescheduleTarget, newDate, newTime, reason)
+  }
+
+  /** Remarcação de um agendamento (pelo diálogo ou ao arrastar): valida e grava o histórico. */
+  const performReschedule = async (
+    app: AppointmentRecord,
+    newDate: string,
+    newTime: string,
+    reason: string,
+  ) => {
     const originalDur = durationMinutes(app)
     const prof = app.professional || ''
     // AGENDA FECHADA: remarcação não pode cair num dia fechado nem num horário bloqueado
@@ -385,6 +394,30 @@ export default function Agenda() {
     } catch (_) {
       toast({ title: 'Erro ao remarcar', variant: 'destructive' })
     }
+  }
+
+  /** Arrastar um agendamento para outro horário: mesma remarcação do diálogo (histórico preservado). */
+  const handleDropAppointment = (app: AppointmentRecord, newDate: string, newTime: string) => {
+    if (isCompromisso(app)) return
+    if ((app.date || '').slice(0, 10) === newDate && (app.start_time || '').slice(0, 5) === newTime)
+      return
+    const dup = appointments.some(
+      (a) =>
+        a.id !== app.id &&
+        a.patient === app.patient &&
+        (a.date || '').slice(0, 10) === newDate &&
+        (a.start_time || '').slice(0, 5) === newTime &&
+        !['desmarcado_clinica', 'desmarcado_paciente', 'remarcou'].includes(a.status),
+    )
+    if (dup) {
+      toast({
+        title: 'Paciente já agendado neste horário',
+        description: 'Escolha outro horário ou outra data.',
+        variant: 'destructive',
+      })
+      return
+    }
+    performReschedule(app, newDate, newTime, '')
   }
 
   /** Clique num horário livre da grade: abre o formulário de nova consulta já preenchido. */
@@ -674,6 +707,7 @@ export default function Agenda() {
           onRequestCancel={(app, kind) => setCancelTarget({ app, kind })}
           onEdit={(app) => setEditTarget(app)}
           onReschedule={(app) => setRescheduleTarget(app)}
+          onDropAppointment={handleDropAppointment}
           onWhatsApp={openWhatsAppReminder}
           onDelete={handleDeleteAppointment}
         />

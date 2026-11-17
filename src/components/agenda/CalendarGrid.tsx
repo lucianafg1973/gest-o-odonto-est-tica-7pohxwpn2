@@ -131,6 +131,8 @@ interface Props {
   onWhatsApp: (app: AppointmentRecord) => void
   /** Exclui definitivamente (usado por compromissos). */
   onDelete?: (app: AppointmentRecord) => void
+  /** Agendamento arrastado e solto num horário da grade (Dia/Semana). */
+  onDropAppointment?: (app: AppointmentRecord, date: string, time: string) => void
 }
 
 export default function CalendarGrid({
@@ -146,6 +148,7 @@ export default function CalendarGrid({
   onEdit,
   onWhatsApp,
   onDelete,
+  onDropAppointment,
 }: Props) {
   const today = new Date()
   const [period, setPeriod] = useState<GridPeriod>(initialPeriod)
@@ -158,6 +161,11 @@ export default function CalendarGrid({
     () => DEFAULT_WORK_SCHEDULE,
   )
   const [settingsOpen, setSettingsOpen] = useState(false)
+  /** Soltar um agendamento: resolve o registro pelo id do dataTransfer e delega à página. */
+  const handleDropAt = (id: string, date: string, time: string) => {
+    const app = appointments.find((a) => a.id === id)
+    if (app && onDropAppointment) onDropAppointment(app, date, time)
+  }
   const [settingsDow, setSettingsDow] = useState(1)
   const [settingsStart, setSettingsStart] = useState('08:00')
   const [settingsEnd, setSettingsEnd] = useState('19:00')
@@ -547,6 +555,7 @@ export default function CalendarGrid({
                               <SlotCell
                                 key={p.id || 'none'}
                                 dateISO={iso}
+                                onDropAt={handleDropAt}
                                 time={time}
                                 professionalId={p.id}
                                 pastel={colPastel}
@@ -574,6 +583,7 @@ export default function CalendarGrid({
                               <SlotCell
                                 key={diso}
                                 dateISO={diso}
+                                onDropAt={handleDropAt}
                                 time={time}
                                 professionalId=""
                                 pastel={null}
@@ -744,6 +754,8 @@ function SlotCell({
   /** Primeira fileira da grade — onde o rótulo do compromisso é mostrado. */
   isFirst?: boolean
   onEditClosed?: (app: AppointmentRecord) => void
+  /** Soltar um agendamento nesta célula (horário de destino). */
+  onDropAt?: (id: string, dateISO: string, time: string) => void
 }) {
   const apps = bucket || []
   const freed = apps.filter((a) => isSlotFree(a))
@@ -765,6 +777,17 @@ function SlotCell({
       }
       onClick={() => {
         if (clickable) onCreateAt({ date: dateISO, time, professionalId })
+      }}
+      onDragOver={(e) => {
+        if (!onDropAt) return
+        e.preventDefault()
+        e.dataTransfer.dropEffect = 'move'
+      }}
+      onDrop={(e) => {
+        if (!onDropAt) return
+        e.preventDefault()
+        const id = e.dataTransfer.getData('text/plain')
+        if (id) onDropAt(id, dateISO, time)
       }}
       title={clickable ? `${dateISO} ${time} — clique para agendar` : undefined}
       onMouseEnter={(e) => {

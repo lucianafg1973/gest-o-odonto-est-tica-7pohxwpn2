@@ -128,10 +128,13 @@ export default function AppointmentEditDialog({
     setError(null)
   }
 
-  /** Fim informado manualmente: se virar ≤ início, empurra para início + 30 min. */
-  const handleEndTimeChange = (v: string) => {
-    if (!v) return
-    let end = timeToMin(v)
+  /** Normaliza o fim ao sair do campo: vazio ou ≤ início → início + 30 min. */
+  const normalizeEndTime = () => {
+    if (!endTime) {
+      setEndTime(addMinToTime(startTime, SLOT_MIN))
+      return
+    }
+    let end = timeToMin(endTime)
     if (end <= timeToMin(startTime)) end = timeToMin(startTime) + SLOT_MIN
     setEndTime(addMinToTime(startTime, end - timeToMin(startTime)))
     setError(null)
@@ -149,7 +152,7 @@ export default function AppointmentEditDialog({
         return
       }
       // Dia inteiro não usa horários; horário específico exige fim > início.
-      if (!isAllDay && timeToMin(endTime) <= timeToMin(startTime)) {
+      if (!isAllDay && (!endTime || timeToMin(endTime) <= timeToMin(startTime))) {
         setError('O horário de fim deve ser depois do início (mínimo 30 min).')
         return
       }
@@ -342,7 +345,8 @@ export default function AppointmentEditDialog({
                   <Input
                     type="time"
                     value={endTime}
-                    onChange={(e) => handleEndTimeChange(e.target.value)}
+                    onChange={(e) => setEndTime(e.target.value)}
+                    onBlur={normalizeEndTime}
                   />
                 </div>
               </div>

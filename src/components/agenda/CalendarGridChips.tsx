@@ -191,7 +191,7 @@ export function AppointmentChip({
       <ContextMenuTrigger asChild>
         <button
           type="button"
-          draggable
+          draggable={!compromisso}
           onDragStart={(e) => {
             // O id viaja no dataTransfer; a célula de destino resolve o agendamento.
             e.dataTransfer.setData('text/plain', app.id)
@@ -207,7 +207,7 @@ export function AppointmentChip({
             color: pastel.text,
             height: `${span * 2.25 - 0.15}rem`,
           }}
-          title={`${tooltip} — arraste para remarcar ou clique com o botão direito`}
+          title={`${tooltip} ${compromisso ? '' : '— arraste para remarcar ou '}clique com o botão direito`}
           onClick={(e) => {
             e.stopPropagation()
             onOpenDetail(app)
