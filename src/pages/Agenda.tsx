@@ -4,6 +4,7 @@ import {
   getAppointments,
   createAppointment,
   updateAppointment,
+  deleteAppointment,
   createStatusEvent,
   AppointmentRecord,
   AppointmentStatus,
@@ -89,6 +90,11 @@ export default function Agenda() {
   const [quickPatientOpen, setQuickPatientOpen] = useState(false)
   const [quickPatientName, setQuickPatientName] = useState('')
 
+  // Alternador do diálogo de criação: Consulta (com paciente) | Compromisso (sem paciente)
+  const [entryKind, setEntryKind] = useState<'consulta' | 'compromisso'>('consulta')
+  const [entryTitle, setEntryTitle] = useState('')
+  const [isAllDay, setIsAllDay] = useState(false)
+
   // dialogs
   // Filtro de profissionais (multi-seleção): vazio = Todos.
   const [profFilter, setProfFilter] = useState<string[]>([])
@@ -161,6 +167,47 @@ export default function Agenda() {
       loadData()
     } catch (_) {
       toast({ title: 'Erro ao agendar', variant: 'destructive' })
+    }
+  }
+
+  /** Criação de COMPROMISSO interno (sem paciente): qual + dia inteiro vs horário. */
+  const handleCreateCompromisso = async () => {
+    if (!entryTitle.trim()) {
+      toast({
+        title: 'Informe qual é o compromisso',
+        description: 'Ex.: reunião, administrativo, pausa…',
+        variant: 'destructive',
+      })
+      return
+    }
+    if (!isAllDay && timeToMin(endTime) <= timeToMin(startTime)) {
+      toast({
+        title: 'Horário inválido',
+        description: 'O fim deve ser depois do início (mínimo 30 min).',
+        variant: 'destructive',
+      })
+      return
+    }
+    try {
+      await createAppointment({
+        patient: '',
+        professional:
+          selectedProfessional === 'none' ? undefined : selectedProfessional || undefined,
+        date,
+        start_time: isAllDay ? '00:00' : startTime,
+        end_time: isAllDay ? '23:59' : endTime || addMin(startTime, DEFAULT_APPOINTMENT_DURATION),
+        status: 'agendado',
+        notes,
+        entry_kind: 'compromisso',
+        entry_title: entryTitle.trim(),
+        is_all_day: isAllDay,
+      })
+      toast({ title: 'Compromisso agendado!' })
+      setOpenModal(false)
+      setPendingSlot(null)
+      loadData()
+    } catch (_) {
+      toast({ title: 'Erro ao agendar compromisso', variant: 'destructive' })
     }
   }
 
@@ -289,6 +336,9 @@ export default function Agenda() {
     setStartTime(opts.time)
     setEndTime(addMin(opts.time, DEFAULT_APPOINTMENT_DURATION))
     setNotes('')
+    setEntryKind('consulta')
+    setEntryTitle('')
+    setIsAllDay(false)
     setPendingSlot(opts)
     setOpenModal(true)
   }
@@ -326,14 +376,24 @@ export default function Agenda() {
       })
       return
     }
+    const isComp = values.entry_title !== undefined
     try {
       await updateAppointment(appId, {
-        patient: values.patient,
-        ...(values.procedure ? { procedure: values.procedure } : {}),
+        ...(isComp
+          ? {
+              entry_title: values.entry_title,
+              is_all_day: !!values.is_all_day,
+              start_time: values.is_all_day ? '00:00' : values.start_time,
+              end_time: values.is_all_day ? '23:59' : values.end_time,
+            }
+          : {
+              patient: values.patient,
+              ...(values.procedure ? { procedure: values.procedure } : {}),
+            }),
         ...(values.professional ? { professional: values.professional } : {}),
         date: values.date,
-        start_time: values.start_time,
-        end_time: values.end_time,
+        start_time: isComp && values.is_all_day ? '00:00' : values.start_time,
+        end_time: isComp && values.is_all_day ? '23:59' : values.end_time,
         notes: values.notes,
       })
       toast({ title: 'Agendamento atualizado!' })
@@ -341,6 +401,18 @@ export default function Agenda() {
       loadData()
     } catch (_) {
       toast({ title: 'Erro ao salvar alterações', variant: 'destructive' })
+    }
+  }
+
+  /** Exclusão definitiva de COMPROMISSO (sem histórico de remarcação/status). */
+  const handleDeleteAppointment = async (app: AppointmentRecord) => {
+    try {
+      await deleteAppointment(app.id)
+      toast({ title: 'Compromisso excluído' })
+      setEditTarget(null)
+      loadData()
+    } catch (_) {
+      toast({ title: 'Erro ao excluir compromisso', variant: 'destructive' })
     }
   }
 
@@ -504,6 +576,7 @@ export default function Agenda() {
           onEdit={(app) => setEditTarget(app)}
           onReschedule={(app) => setRescheduleTarget(app)}
           onWhatsApp={openWhatsAppReminder}
+          onDelete={handleDeleteAppointment}
         />
       ) : activeTab === 'calendar' ? (
         <Card className="card-warm">
@@ -685,6 +758,10 @@ export default function Agenda() {
         procedures={procedures}
         professionals={professionals}
         onConfirm={(id, values) => editConfirmRef.current(id, values)}
+        onDelete={(id) => {
+          const app = appointments.find((a) => a.id === id)
+          if (app) handleDeleteAppointment(app)
+        }}
       />
 
       <CancelDialog
@@ -715,136 +792,249 @@ export default function Agenda() {
         <DialogContent className="max-w-md bg-white border-[#EDE3D8]">
           <DialogHeader>
             <DialogTitle className="font-serif-title text-[#2D1B14]">
-              Agendar Nova Consulta
+              {entryKind === 'compromisso' ? 'Novo Compromisso' : 'Agendar Nova Consulta'}
             </DialogTitle>
             <DialogDescription className="text-xs text-[#6B4F42]">
-              Selecione o paciente e procedimento.
+              {entryKind === 'compromisso'
+                ? 'Informe o que é e se ocupa o dia inteiro ou um horário específico.'
+                : 'Selecione o paciente e procedimento.'}
               {pendingSlot && ' Pré-preenchido a partir do horário selecionado na grade.'}
             </DialogDescription>
           </DialogHeader>
 
-          <form onSubmit={handleCreateAppointment} className="space-y-4 py-2">
-            <div className="space-y-1">
-              <Label className="text-xs font-semibold">Paciente</Label>
-              <PatientAutocomplete
-                patients={patients}
-                value={patients.find((p) => p.id === selectedPatient) || null}
-                onSelect={(p) => setSelectedPatient(p.id)}
-                onCreateNew={(name) => {
-                  setQuickPatientName(name)
-                  setQuickPatientOpen(true)
-                }}
-              />
-            </div>
-
-            <div className="space-y-1">
-              <Label className="text-xs font-semibold">Profissional</Label>
-              <Select value={selectedProfessional} onValueChange={setSelectedProfessional}>
-                <SelectTrigger className="bg-[#FFFDF9] border-[#EDE3D8]">
-                  <SelectValue placeholder="Selecione (opcional)" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="none">Sem profissional</SelectItem>
-                  {professionals.map((p) => (
-                    <SelectItem key={p.id} value={p.id}>
-                      {p.name}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-
-            <div className="space-y-1">
-              <Label className="text-xs font-semibold">Procedimento</Label>
-              <Select value={selectedProcedure} onValueChange={setSelectedProcedure}>
-                <SelectTrigger className="bg-[#FFFDF9] border-[#EDE3D8]">
-                  <SelectValue placeholder="Selecione o procedimento" />
-                </SelectTrigger>
-                <SelectContent>
-                  {procedures.map((p) => (
-                    <SelectItem key={p.id} value={p.id}>
-                      {p.name} (R$ {p.price})
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-
-            <div className="grid grid-cols-2 gap-3">
-              <div className="space-y-1">
-                <Label className="text-xs font-semibold">Data</Label>
-                <Input
-                  type="date"
-                  value={date}
-                  onChange={(e) => setDate(e.target.value)}
-                  required
-                />
-              </div>
-              <div className="space-y-1">
-                <Label className="text-xs font-semibold">Horário de Início</Label>
-                <Input
-                  type="time"
-                  value={startTime}
-                  onChange={(e) => {
-                    const v = e.target.value
-                    setStartTime(v)
-                    if (v && timeToMin(endTime) <= timeToMin(v)) {
-                      setEndTime(addMin(v, DEFAULT_APPOINTMENT_DURATION))
-                    }
-                  }}
-                  required
-                />
-              </div>
-            </div>
-
-            <div className="space-y-1">
-              <Label className="text-xs font-semibold">Horário de Fim</Label>
-              <Input type="time" value={endTime} onChange={(e) => setEndTime(e.target.value)} />
-              <div className="flex items-center gap-2">
-                <Button
+          <form
+            onSubmit={(e) => {
+              e.preventDefault()
+              if (entryKind === 'compromisso') handleCreateCompromisso()
+              else handleCreateAppointment(e)
+            }}
+            className="space-y-4 py-2"
+          >
+            {/* Alternador Consulta | Compromisso */}
+            <div className="flex gap-1 bg-[#FAF6F0] p-1 rounded-lg border border-[#EDE3D8]">
+              {(['consulta', 'compromisso'] as const).map((k) => (
+                <button
+                  key={k}
                   type="button"
-                  size="sm"
-                  variant="outline"
-                  className="h-7 w-7 p-0"
-                  onClick={() => {
-                    const dur = Math.max(30, timeToMin(endTime) - timeToMin(startTime) - 15)
-                    setEndTime(addMin(startTime, dur))
-                  }}
-                  title="Diminuir 15 minutos"
+                  onClick={() => setEntryKind(k)}
+                  className={`flex-1 text-xs px-3 py-1.5 rounded-md border transition-colors ${
+                    entryKind === k
+                      ? 'bg-[#C66B4D] text-white border-[#C66B4D] font-semibold'
+                      : 'bg-white text-[#6B4F42] border-[#EDE3D8] hover:bg-[#FFF3D6]'
+                  }`}
                 >
-                  <Minus className="w-3 h-3" />
-                </Button>
-                <span className="text-[11px] text-[#6B4F42]">
-                  Duração: {Math.max(0, timeToMin(endTime) - timeToMin(startTime))}min
-                </span>
-                <Button
-                  type="button"
-                  size="sm"
-                  variant="outline"
-                  className="h-7 w-7 p-0"
-                  onClick={() =>
-                    setEndTime(
-                      addMin(
-                        startTime,
-                        Math.max(30, timeToMin(endTime) - timeToMin(startTime) + 15),
-                      ),
-                    )
-                  }
-                  title="Aumentar 15 minutos"
-                >
-                  <Plus className="w-3 h-3" />
-                </Button>
-              </div>
+                  {k === 'consulta' ? 'Consulta' : 'Compromisso'}
+                </button>
+              ))}
             </div>
 
-            <div className="space-y-1">
-              <Label className="text-xs font-semibold">Observações</Label>
-              <Input
-                placeholder="Recomendações preliminares..."
-                value={notes}
-                onChange={(e) => setNotes(e.target.value)}
-              />
-            </div>
+            {entryKind === 'compromisso' ? (
+              <>
+                <div className="space-y-1">
+                  <Label className="text-xs font-semibold">Qual</Label>
+                  <Input
+                    placeholder="Ex.: reunião, administrativo, pausa, curso…"
+                    value={entryTitle}
+                    onChange={(e) => setEntryTitle(e.target.value)}
+                    required
+                  />
+                </div>
+
+                <div className="flex items-center gap-4">
+                  <label className="flex items-center gap-2 text-xs text-[#2D1B14] cursor-pointer">
+                    <Checkbox checked={isAllDay} onCheckedChange={(v) => setIsAllDay(v === true)} />
+                    Dia inteiro
+                  </label>
+                  <label className="flex items-center gap-2 text-xs text-[#2D1B14] cursor-pointer">
+                    <Checkbox
+                      checked={!isAllDay}
+                      onCheckedChange={(v) => setIsAllDay(v !== true)}
+                    />
+                    Horário específico
+                  </label>
+                </div>
+
+                <div className="space-y-1">
+                  <Label className="text-xs font-semibold">Profissional</Label>
+                  <Select value={selectedProfessional} onValueChange={setSelectedProfessional}>
+                    <SelectTrigger className="bg-[#FFFDF9] border-[#EDE3D8]">
+                      <SelectValue placeholder="Selecione (opcional)" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="none">Nenhum (clínica)</SelectItem>
+                      {professionals.map((p) => (
+                        <SelectItem key={p.id} value={p.id}>
+                          {p.name}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+
+                <div className="space-y-1">
+                  <Label className="text-xs font-semibold">Data</Label>
+                  <Input
+                    type="date"
+                    value={date}
+                    onChange={(e) => setDate(e.target.value)}
+                    required
+                  />
+                </div>
+
+                {!isAllDay && (
+                  <div className="grid grid-cols-2 gap-3">
+                    <div className="space-y-1">
+                      <Label className="text-xs font-semibold">Início</Label>
+                      <Input
+                        type="time"
+                        value={startTime}
+                        onChange={(e) => {
+                          const v = e.target.value
+                          setStartTime(v)
+                          if (v && timeToMin(endTime) <= timeToMin(v)) {
+                            setEndTime(addMin(v, DEFAULT_APPOINTMENT_DURATION))
+                          }
+                        }}
+                        required
+                      />
+                    </div>
+                    <div className="space-y-1">
+                      <Label className="text-xs font-semibold">Fim</Label>
+                      <Input
+                        type="time"
+                        value={endTime}
+                        onChange={(e) => setEndTime(e.target.value)}
+                        required
+                      />
+                    </div>
+                  </div>
+                )}
+              </>
+            ) : (
+              <>
+                <div className="space-y-1">
+                  <Label className="text-xs font-semibold">Paciente</Label>
+                  <PatientAutocomplete
+                    patients={patients}
+                    value={patients.find((p) => p.id === selectedPatient) || null}
+                    onSelect={(p) => setSelectedPatient(p.id)}
+                    onCreateNew={(name) => {
+                      setQuickPatientName(name)
+                      setQuickPatientOpen(true)
+                    }}
+                  />
+                </div>
+
+                <div className="space-y-1">
+                  <Label className="text-xs font-semibold">Profissional</Label>
+                  <Select value={selectedProfessional} onValueChange={setSelectedProfessional}>
+                    <SelectTrigger className="bg-[#FFFDF9] border-[#EDE3D8]">
+                      <SelectValue placeholder="Selecione (opcional)" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="none">Sem profissional</SelectItem>
+                      {professionals.map((p) => (
+                        <SelectItem key={p.id} value={p.id}>
+                          {p.name}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+
+                <div className="space-y-1">
+                  <Label className="text-xs font-semibold">Procedimento</Label>
+                  <Select value={selectedProcedure} onValueChange={setSelectedProcedure}>
+                    <SelectTrigger className="bg-[#FFFDF9] border-[#EDE3D8]">
+                      <SelectValue placeholder="Selecione o procedimento" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {procedures.map((p) => (
+                        <SelectItem key={p.id} value={p.id}>
+                          {p.name} (R$ {p.price})
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+
+                <div className="grid grid-cols-2 gap-3">
+                  <div className="space-y-1">
+                    <Label className="text-xs font-semibold">Data</Label>
+                    <Input
+                      type="date"
+                      value={date}
+                      onChange={(e) => setDate(e.target.value)}
+                      required
+                    />
+                  </div>
+                  <div className="space-y-1">
+                    <Label className="text-xs font-semibold">Horário de Início</Label>
+                    <Input
+                      type="time"
+                      value={startTime}
+                      onChange={(e) => {
+                        const v = e.target.value
+                        setStartTime(v)
+                        if (v && timeToMin(endTime) <= timeToMin(v)) {
+                          setEndTime(addMin(v, DEFAULT_APPOINTMENT_DURATION))
+                        }
+                      }}
+                      required
+                    />
+                  </div>
+                </div>
+
+                <div className="space-y-1">
+                  <Label className="text-xs font-semibold">Horário de Fim</Label>
+                  <Input type="time" value={endTime} onChange={(e) => setEndTime(e.target.value)} />
+                  <div className="flex items-center gap-2">
+                    <Button
+                      type="button"
+                      size="sm"
+                      variant="outline"
+                      className="h-7 w-7 p-0"
+                      onClick={() => {
+                        const dur = Math.max(30, timeToMin(endTime) - timeToMin(startTime) - 15)
+                        setEndTime(addMin(startTime, dur))
+                      }}
+                      title="Diminuir 15 minutos"
+                    >
+                      <Minus className="w-3 h-3" />
+                    </Button>
+                    <span className="text-[11px] text-[#6B4F42]">
+                      Duração: {Math.max(0, timeToMin(endTime) - timeToMin(startTime))}min
+                    </span>
+                    <Button
+                      type="button"
+                      size="sm"
+                      variant="outline"
+                      className="h-7 w-7 p-0"
+                      onClick={() =>
+                        setEndTime(
+                          addMin(
+                            startTime,
+                            Math.max(30, timeToMin(endTime) - timeToMin(startTime) + 15),
+                          ),
+                        )
+                      }
+                      title="Aumentar 15 minutos"
+                    >
+                      <Plus className="w-3 h-3" />
+                    </Button>
+                  </div>
+                </div>
+
+                <div className="space-y-1">
+                  <Label className="text-xs font-semibold">Observações</Label>
+                  <Input
+                    placeholder="Recomendações preliminares..."
+                    value={notes}
+                    onChange={(e) => setNotes(e.target.value)}
+                  />
+                </div>
+              </>
+            )}
 
             <div className="flex justify-end gap-2 pt-2 border-t border-[#EDE3D8]">
               <Button type="button" variant="outline" onClick={() => setOpenModal(false)}>

@@ -36,6 +36,7 @@ import {
 import { professionalPastel } from '@/lib/professional-colors'
 import { isSlotFree } from '@/lib/agenda-status'
 import {
+  categorizeAppointment,
   CATEGORY_LABELS,
   CATEGORY_STYLES,
   type AppointmentCategory,
@@ -409,15 +410,16 @@ export default function CalendarGrid({
                       >
                         {entries.map((a) => {
                           const c = pastelFor(a.professional, a.expand?.professional?.name)
-                          const cat = categorizeAppointment(a)
                           return (
                             <button
                               key={a.id}
                               type="button"
-                              className={cn(
-                                'w-full text-left rounded border border-dashed px-2 py-1 text-[10px] leading-tight hover:shadow-sm flex items-stretch overflow-hidden',
-                              )}
-                              style={{ backgroundColor: c.bg, borderColor: c.border }}
+                              className="w-full text-left rounded border border-dashed px-2 py-1 text-[10px] leading-tight hover:shadow-sm flex items-stretch overflow-hidden"
+                              style={{
+                                backgroundColor: c.bg,
+                                borderColor: c.border,
+                                color: c.text,
+                              }}
                               onClick={() => setDetail(a)}
                               title={`${compromissoTitulo(a)} — dia inteiro${
                                 a.expand?.professional?.name
@@ -427,10 +429,10 @@ export default function CalendarGrid({
                             >
                               <span
                                 className="w-1 shrink-0 rounded-full mr-1.5"
-                                style={{ backgroundColor: CATEGORY_STYLES[cat].dotColor }}
+                                style={{ backgroundColor: c.dot }}
                               />
-                              <span className="truncate font-medium text-[#2D1B14]">
-                                {compromissoTitulo(a)}
+                              <span className="truncate font-medium">
+                                {compromissoTitulo(a)} — dia inteiro
                               </span>
                             </button>
                           )

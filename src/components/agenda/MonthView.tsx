@@ -4,8 +4,13 @@
  */
 import { useMemo } from 'react'
 import { Plus } from 'lucide-react'
-import { STATUS_LABELS, type AppointmentRecord } from '@/services/appointments'
-import { categorizeAppointment, CATEGORY_STYLES, CATEGORY_LABELS } from '@/lib/appointment-category'
+import {
+  STATUS_LABELS,
+  isCompromisso,
+  compromissoTitulo,
+  type AppointmentRecord,
+} from '@/services/appointments'
+import { professionalPastel } from '@/lib/professional-colors'
 import { isSlotFree } from '@/lib/agenda-status'
 import { cn } from '@/lib/utils'
 
@@ -138,8 +143,10 @@ export default function MonthView({ cursor, appointments, today, onOpenDay, onCr
                   </div>
                   <div className="mt-0.5 space-y-0.5">
                     {c.active.slice(0, 3).map((a) => {
-                      const cat = categorizeAppointment(a)
-                      const style = CATEGORY_STYLES[cat]
+                      const pastel = professionalPastel(
+                        a.professional || a.expand?.professional?.name || '',
+                      )
+                      const comp = isCompromisso(a)
                       return (
                         <button
                           type="button"
@@ -147,15 +154,46 @@ export default function MonthView({ cursor, appointments, today, onOpenDay, onCr
                           onClick={() => onOpenDay(c.iso)}
                           className={cn(
                             'w-full text-left border rounded px-1 py-0.5 text-[9px] leading-tight truncate hover:shadow-sm flex items-center gap-1',
-                            style.chip,
+                            comp && 'border-dashed',
                           )}
-                          title={`${a.expand?.patient?.name || 'Paciente'} — ${
-                            a.expand?.procedure?.name || 'Atendimento Geral'
-                          } — ${CATEGORY_LABELS[cat]} — Status: ${STATUS_LABELS[a.status]}`}
+                          style={
+                            comp
+                              ? {
+                                  backgroundColor: pastel.bg,
+                                  borderColor: pastel.border,
+                                  color: pastel.text,
+                                }
+                              : {
+                                  backgroundColor: pastel.bg,
+                                  borderLeft: `3px solid ${pastel.border}`,
+                                }
+                          }
+                          title={
+                            comp
+                              ? `${compromissoTitulo(a)} — ${a.is_all_day ? 'dia inteiro' : a.start_time}${
+                                  a.expand?.professional?.name
+                                    ? ` — ${a.expand.professional.name}`
+                                    : ''
+                                }`
+                              : `${a.expand?.patient?.name || 'Paciente'} — ${
+                                  a.expand?.procedure?.name || 'Atendimento Geral'
+                                } — Status: ${STATUS_LABELS[a.status]}${
+                                  a.expand?.professional?.name
+                                    ? ` — ${a.expand.professional.name}`
+                                    : ''
+                                }`
+                          }
                         >
-                          <span className={`w-1.5 h-1.5 rounded-full shrink-0 ${style.dot}`} />
+                          {!comp && (
+                            <span
+                              className="w-1.5 h-1.5 rounded-full shrink-0"
+                              style={{ backgroundColor: pastel.border }}
+                            />
+                          )}
                           <span className="truncate">
-                            {a.expand?.patient?.name || 'Paciente'} · {a.start_time}
+                            {comp
+                              ? compromissoTitulo(a)
+                              : `${a.expand?.patient?.name || 'Paciente'} · ${a.start_time}`}
                           </span>
                         </button>
                       )
