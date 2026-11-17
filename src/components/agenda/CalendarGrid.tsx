@@ -31,6 +31,7 @@ import {
   isCompromisso,
   compromissoTitulo,
   compromissoQueFechaDia,
+  compromissoQueBloqueiaHorario,
   type AppointmentRecord,
   type AppointmentStatus,
 } from '@/services/appointments'
@@ -63,6 +64,11 @@ const MONTH_NAMES = [
 ]
 
 const SLOT_MIN = 30
+
+/** Este slot (time) é onde o compromisso de horário COMEÇA? (rótulo só ali). */
+function isBloqueioInicio(app: AppointmentRecord, time: string): boolean {
+  return timeToMin((app.start_time || '').slice(0, 5)) < timeToMin(time) + SLOT_MIN
+}
 
 /** "09:00" → 540 */
 export function timeToMin(t: string): number {
@@ -294,6 +300,47 @@ export default function CalendarGrid({
   const colFechado = (iso: string, professionalId: string) =>
     compromissoQueFechaDia(appointments, iso, professionalId)
 
+  /**
+   * O horário (slot) está bloqueado por compromisso COM horário específico nesta
+   * coluna? Mesma regra de escopo do fechamento do dia: sem profissional bloqueia
+   * todos; com profissional bloqueia só a coluna dele. Na semana (coluna = dia,
+   * professionalId='') qualquer compromisso do dia bloqueia o intervalo.
+   */
+  const bloqueioHorario = (
+    iso: string,
+    slotMin: number,
+    professionalId: string | undefined,
+  ): AppointmentRecord | null =>
+    compromissoQueBloqueiaHorario(appointments, iso, slotMin, slotMin + SLOT_MIN, professionalId)
+
+  /** Compromissos de horário específico que bloqueiam este dia/coluna (p/ o cabeçalho).
+   * undefined = qualquer compromisso do dia (visão semana); '' = só os da clínica;
+   * id = os do profissional (mais os da clínica). */
+  const bloqueiosDoDia = (iso: string, professionalId: string | undefined): AppointmentRecord[] => {
+    const seen = new Set<string>()
+    return appointments.filter((a) => {
+      if (!isCompromisso(a) || a.is_all_day || isSlotFree(a)) return false
+      if ((a.date || '').slice(0, 10) !== iso) return false
+      if (professionalId !== undefined) {
+        if (professionalId && a.professional && a.professional !== professionalId) return false
+        if (professionalId === '' && a.professional) return false
+      }
+      if (seen.has(a.id)) return false
+      seen.add(a.id)
+      return true
+    })
+  }
+
+  /**
+   * Compromissos de horário específico NÃO viram mais chips: viram overlay de
+   * fechamento (hachura + cadeado) sobre o intervalo. Filtra-os dos chips para
+   * não duplicar com o overlay.
+   */
+  const appsParaChips = useMemo(
+    () => appointments.filter((a) => !(isCompromisso(a) && !a.is_all_day && !isSlotFree(a))),
+    [appointments],
+  )
+
   /** Profissional (id ou nome) → cor pastel — consistente em Dia/Semana/Mês. */
   const pastelFor = (id?: string, name?: string) => professionalPastel(id || name || '')
 
@@ -416,6 +463,15 @@ export default function CalendarGrid({
                               <Lock className="w-3 h-3" /> Fechada
                             </p>
                           )}
+                          {!closures.get(toISO(cursor)) &&
+                            bloqueiosDoDia(toISO(cursor), p.id).length > 0 && (
+                              <p className="text-[10px] font-semibold text-[#8A6A55] flex items-center justify-center gap-1 mt-0.5">
+                                <Lock className="w-3 h-3" />
+                                {bloqueiosDoDia(toISO(cursor), p.id)
+                                  .map((b) => compromissoTitulo(b))
+                                  .join(', ')}
+                              </p>
+                            )}
                         </div>
                       )
                     })
@@ -453,6 +509,14 @@ export default function CalendarGrid({
                               <Lock className="w-3 h-3" /> Fechada
                             </p>
                           )}
+                          {!closures.get(iso) && bloqueiosDoDia(iso, '').length > 0 && (
+                            <p className="text-[10px] font-semibold text-[#8A6A55] flex items-center justify-center gap-1">
+                              <Lock className="w-3 h-3" />
+                              {bloqueiosDoDia(iso, '')
+                                .map((b) => compromissoTitulo(b))
+                                .join(', ')}
+                            </p>
+                          )}
                         </div>
                       )
                     })}
@@ -486,9 +550,10 @@ export default function CalendarGrid({
                                 bucket={bucket}
                                 fechado={colFechado(iso, p.id)}
                                 isFirst={min === slots[0]}
+                                bloqueado={bloqueioHorario(iso, min, p.id)}
                                 onEditClosed={onEdit}
                                 chips={groupChipsWithClinicCompromissos(
-                                  appointments,
+                                  appsParaChips,
                                   iso,
                                   p.id,
                                   slots,
@@ -511,9 +576,10 @@ export default function CalendarGrid({
                                 pastel={null}
                                 bucket={bucket}
                                 fechado={closures.get(diso) || null}
+                                bloqueado={bloqueioHorario(diso, min, undefined)}
                                 isFirst={min === slots[0]}
                                 onEditClosed={onEdit}
-                                chips={groupChips(appointments, diso, '', slots, work.end).filter(
+                                chips={groupChips(appsParaChips, diso, '', slots, work.end).filter(
                                   (g) => g.row === slots.indexOf(min),
                                 )}
                                 onCreateAt={onCreateAt}
@@ -655,6 +721,7 @@ function SlotCell({
   onCreateAt,
   onOpenDetail,
   fechado,
+  bloqueado,
   isFirst,
   onEditClosed,
 }: {
@@ -669,6 +736,8 @@ function SlotCell({
   onOpenDetail: (app: AppointmentRecord) => void
   /** Agenda FECHADA: compromisso de dia inteiro neste dia (clique abre a edição). */
   fechado?: AppointmentRecord | null
+  /** Slot BLOQUEADO por compromisso com horário específico (clique abre a edição). */
+  bloqueado?: AppointmentRecord | null
   /** Primeira fileira da grade — onde o rótulo do compromisso é mostrado. */
   isFirst?: boolean
   onEditClosed?: (app: AppointmentRecord) => void
@@ -677,8 +746,8 @@ function SlotCell({
   const freed = apps.filter((a) => isSlotFree(a))
   // A célula fica clicável quando NENHUM chip começa nela (chips longos ocupam
   // várias fileiras, mas a célula de origem é a única que abre o "+ agendar").
-  // Com a agenda FECHADA, nenhum horário é clicável.
-  const clickable = chips.length === 0 && !fechado
+  // Com a agenda FECHADA (dia inteiro ou intervalo), nenhum horário é clicável.
+  const clickable = chips.length === 0 && !fechado && !bloqueado
 
   return (
     <div
@@ -716,6 +785,46 @@ function SlotCell({
         <span className="hidden group-hover:block absolute right-1 top-1 text-[9px] text-[#C66B4D] font-semibold pointer-events-none">
           + agendar
         </span>
+      )}
+      {/* Slot bloqueado por compromisso COM horário: mesma hachura da coluna fechada;
+         rótulo apenas no primeiro slot do intervalo. Clique abre a edição dele. */}
+      {bloqueado && (
+        <div
+          role="button"
+          tabIndex={0}
+          className="absolute inset-0 z-10 cursor-pointer"
+          style={{
+            backgroundColor: 'rgba(107, 79, 66, 0.05)',
+            backgroundImage:
+              'repeating-linear-gradient(45deg, rgba(107, 79, 66, 0.07) 0 6px, transparent 6px 12px)',
+          }}
+          title={`Agenda fechada neste horário: ${compromissoTitulo(bloqueado)} — clique para editar`}
+          onClick={(e) => {
+            e.stopPropagation()
+            onEditClosed?.(bloqueado)
+          }}
+          onKeyDown={(e) => {
+            if (e.key === 'Enter' || e.key === ' ') {
+              e.preventDefault()
+              onEditClosed?.(bloqueado)
+            }
+          }}
+        >
+          {isFirst && isBloqueioInicio(bloqueado, time) && (
+            <span className="m-0.5 flex items-start gap-1 border border-dashed border-[#B08968] rounded-md px-1.5 py-1 bg-[#FAF6F0] hover:shadow-sm">
+              <Lock className="w-3 h-3 mt-0.5 shrink-0 text-[#8A6A55]" />
+              <span className="min-w-0">
+                <span className="block text-[10px] font-semibold leading-tight text-[#2D1B14] truncate">
+                  {compromissoTitulo(bloqueado)}
+                </span>
+                <span className="block text-[9px] leading-tight text-[#6B4F42]">
+                  {(bloqueado.start_time || '').slice(0, 5)}–
+                  {(bloqueado.end_time || '').slice(0, 5)} · Agenda fechada
+                </span>
+              </span>
+            </span>
+          )}
+        </div>
       )}
       {/* Coluna FECHADA por compromisso de dia inteiro: cobre a célula com hachura;
          na primeira fileira, o rótulo do compromisso. Clique abre a edição dele. */}

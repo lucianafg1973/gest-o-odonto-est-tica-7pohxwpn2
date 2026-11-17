@@ -176,6 +176,44 @@ export function compromissoQueFechaDia(
   )
 }
 
+/** "14:00" → 840 (uso interno dos helpers de bloqueio). */
+const toMinBloqueio = (t?: string): number => {
+  const [h, m] = (t || '').split(':').map(Number)
+  return (h || 0) * 60 + (m || 0)
+}
+
+/**
+ * COMPROMISSO QUE BLOQUEIA HORÁRIO: compromisso interno COM horário específico
+ * (não dia inteiro) e ainda ativo (não desmarcado/remarcado), cujo intervalo
+ * sobrepõe o slot dado. Os horários cobertos ficam FECHADOS na grade (hachura +
+ * cadeado): sem novos agendamentos ali, clique abre a edição do compromisso.
+ * Regra de escopo (igual ao fechamento do dia): compromisso SEM profissional
+ * bloqueia para todos; COM profissional bloqueia só a coluna dele. Na visão de
+ * semana (coluna = dia, todos juntos) NÃO passe professionalId: qualquer
+ * compromisso do dia bloqueia o intervalo na coluna do dia.
+ */
+export function compromissoQueBloqueiaHorario(
+  appointments: AppointmentRecord[],
+  dateISO: string,
+  slotStartMin: number,
+  slotEndMin: number,
+  professionalId?: string,
+): AppointmentRecord | null {
+  return (
+    appointments.find((a) => {
+      if (!isCompromisso(a) || a.is_all_day) return false
+      if (FREED_STATUSES.includes(a.status)) return false
+      if ((a.date || '').slice(0, 10) !== dateISO) return false
+      if (professionalId !== undefined && a.professional && a.professional !== professionalId)
+        return false
+      const s = toMinBloqueio(a.start_time)
+      const rawEnd = toMinBloqueio(a.end_time)
+      const e = rawEnd > s ? rawEnd : s + 40
+      return slotStartMin < e && slotEndMin > s
+    }) || null
+  )
+}
+
 /**
  * Calcula o horário de fim a partir do início e da duração (minutos).
  * Duração mínima = slot da grade (30 min); nunca fim ≤ início.

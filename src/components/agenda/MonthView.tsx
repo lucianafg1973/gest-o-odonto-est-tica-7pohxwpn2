@@ -50,6 +50,8 @@ interface CellInfo {
   overflow: number
   /** Compromisso de dia inteiro que FECHA este dia (agenda fechada). */
   fechado: AppointmentRecord | null
+  /** Compromissos de horário específico que BLOQUEIAM intervalos neste dia. */
+  bloqueios: AppointmentRecord[]
 }
 
 export default function MonthView({ cursor, appointments, today, onOpenDay, onCreateAt }: Props) {
@@ -81,7 +83,9 @@ export default function MonthView({ cursor, appointments, today, onOpenDay, onCr
     for (let i = 0; i < 42; i++) {
       const iso = toISO(d)
       const e = byDate.get(iso)
-      const active = e?.active || []
+      // Compromissos de horário específico NÃO entram na lista de chips: viram
+      // rótulo de bloqueio próprio (cadeado) acima da lista.
+      const active = (e?.active || []).filter((a) => !isCompromisso(a) || a.is_all_day)
       out.push({
         iso,
         day: d.getDate(),
@@ -90,11 +94,13 @@ export default function MonthView({ cursor, appointments, today, onOpenDay, onCr
         freedCount: e?.freed || 0,
         overflow: Math.max(0, active.length - 3),
         fechado: compromissoQueFechaDia(appointments, iso),
+        // Compromissos de horário específico ativos do dia (bloqueiam intervalos).
+        bloqueios: e ? e.active.filter((a) => isCompromisso(a) && !a.is_all_day) : [],
       })
       d = new Date(d.getFullYear(), d.getMonth(), d.getDate() + 1)
     }
     return out
-  }, [cursor, byDate])
+  }, [cursor, byDate, appointments])
 
   return (
     <div className="border border-[#EDE3D8] rounded-xl bg-white overflow-hidden">
@@ -146,6 +152,29 @@ export default function MonthView({ cursor, appointments, today, onOpenDay, onCr
                       {c.day}
                     </button>
                   </div>
+                  {/* BLOQUEIO PARCIAL: compromissos de horário específico (cadeado no rótulo;
+                      clique abre o dia — NÃO cria agendamento). */}
+                  {!c.fechado &&
+                    c.bloqueios.map((b) => {
+                      const pastel = professionalPastel(
+                        b.professional || b.expand?.professional?.name || '',
+                      )
+                      return (
+                        <button
+                          key={b.id}
+                          type="button"
+                          onClick={() => onOpenDay(c.iso)}
+                          className="w-full text-left border border-dashed border-[#B08968] rounded px-1 py-0.5 text-[9px] leading-tight bg-[#FAF6F0] hover:shadow-sm flex items-center gap-1"
+                          title={`Horários bloqueados: ${compromissoTitulo(b)} — ${(b.start_time || '').slice(0, 5)} às ${(b.end_time || '').slice(0, 5)} — clique para abrir o dia e editar`}
+                        >
+                          <Lock className="w-2.5 h-2.5 shrink-0 text-[#8A6A55]" />
+                          <span className="truncate font-semibold text-[#2D1B14]">
+                            {compromissoTitulo(b)} {(b.start_time || '').slice(0, 5)}–
+                            {(b.end_time || '').slice(0, 5)}
+                          </span>
+                        </button>
+                      )
+                    })}
                   {/* AGENDA FECHADA: rótulo do compromisso de dia inteiro (clique abre o dia) */}
                   {c.fechado && (
                     <button
@@ -231,26 +260,42 @@ export default function MonthView({ cursor, appointments, today, onOpenDay, onCr
                       <span className="text-[9px] text-[#6B4F42]/70 italic">horário liberado</span>
                     )}
                   </div>
-                  {c.inMonth &&
-                    (c.fechado ? (
-                      <span
-                        className="absolute top-1 right-1 p-0.5 rounded bg-white border border-[#EDE3D8] text-[#8A6A55]"
-                        title={`Agenda fechada neste dia: ${compromissoTitulo(c.fechado)}`}
-                      >
-                        <Lock className="w-3 h-3" />
-                      </span>
-                    ) : (
-                      <button
-                        type="button"
-                        className="hidden group-hover/cell:block absolute top-1 right-1 p-0.5 rounded bg-white border border-[#EDE3D8] text-[#C66B4D] hover:bg-[#FFF3D6]"
-                        title="Novo agendamento neste dia"
-                        onClick={() =>
-                          onCreateAt({ date: c.iso, time: '08:00', professionalId: '' })
-                        }
-                      >
-                        <Plus className="w-3 h-3" />
-                      </button>
-                    ))}
+                  {c.inMonth && c.fechado && (
+                    <span
+                      className="absolute top-1 right-1 p-0.5 rounded bg-white border border-[#EDE3D8] text-[#8A6A55]"
+                      title={`Agenda fechada neste dia: ${compromissoTitulo(c.fechado)}`}
+                    >
+                      <Lock className="w-3 h-3" />
+                    </span>
+                  )}
+                  {c.inMonth && !c.fechado && c.bloqueios.length > 0 && (
+                    <span
+                      className="absolute top-1 right-1 p-0.5 rounded bg-white border border-[#EDE3D8] text-[#8A6A55]"
+                      title={`Horários bloqueados neste dia: ${c.bloqueios
+                        .map(
+                          (b) =>
+                            `${compromissoTitulo(b)} ${(b.start_time || '').slice(0, 5)}–${(b.end_time || '').slice(0, 5)}`,
+                        )
+                        .join(', ')}`}
+                    >
+                      <Lock className="w-3 h-3" />
+                    </span>
+                  )}
+                  {c.inMonth && !c.fechado && (
+                    <button
+                      type="button"
+                      className={cn(
+                        'p-0.5 rounded bg-white border border-[#EDE3D8] text-[#C66B4D] hover:bg-[#FFF3D6]',
+                        c.bloqueios.length > 0
+                          ? 'block absolute top-1 right-8'
+                          : 'hidden group-hover/cell:block absolute top-1 right-1',
+                      )}
+                      title="Novo agendamento neste dia"
+                      onClick={() => onCreateAt({ date: c.iso, time: '08:00', professionalId: '' })}
+                    >
+                      <Plus className="w-3 h-3" />
+                    </button>
+                  )}
                 </div>
               )
             })}

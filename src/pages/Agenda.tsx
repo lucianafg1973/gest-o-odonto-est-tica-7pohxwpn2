@@ -10,6 +10,7 @@ import {
   AppointmentStatus,
   STATUS_LABELS,
   compromissoQueFechaDia,
+  compromissoQueBloqueiaHorario,
   compromissoTitulo,
 } from '@/services/appointments'
 import { getPatients, PatientRecord } from '@/services/patients'
@@ -143,15 +144,31 @@ export default function Agenda() {
     }
 
     // AGENDA FECHADA: compromisso de dia inteiro neste dia bloqueia novas consultas
-    const fechado = compromissoQueFechaDia(
-      appointments,
-      date,
-      selectedProfessional === 'none' ? '' : selectedProfessional || '',
-    )
+    const prof = selectedProfessional === 'none' ? '' : selectedProfessional || ''
+    const fechado = compromissoQueFechaDia(appointments, date, prof)
     if (fechado) {
       toast({
         title: 'Agenda fechada neste dia',
         description: `Agenda fechada neste dia: ${compromissoTitulo(fechado)}. Exclua o compromisso ou tire o "dia inteiro" para reabrir.`,
+        variant: 'destructive',
+      })
+      return
+    }
+
+    // HORÁRIO BLOQUEADO: compromisso com horário específico cobre o intervalo da consulta
+    const consultaInicio = timeToMin(startTime)
+    const consultaFim = timeToMin(endTime || addMin(startTime, DEFAULT_APPOINTMENT_DURATION))
+    const bloqueado = compromissoQueBloqueiaHorario(
+      appointments,
+      date,
+      consultaInicio,
+      Math.max(consultaFim, consultaInicio + 1),
+      prof,
+    )
+    if (bloqueado) {
+      toast({
+        title: 'Agenda fechada neste horário',
+        description: `Agenda fechada neste horário: ${compromissoTitulo(bloqueado)} (${(bloqueado.start_time || '').slice(0, 5)}–${(bloqueado.end_time || '').slice(0, 5)}). Escolha outro horário ou edite o compromisso.`,
         variant: 'destructive',
       })
       return
@@ -290,9 +307,35 @@ export default function Agenda() {
   const handleRescheduleConfirm = async (newDate: string, newTime: string, reason: string) => {
     if (!rescheduleTarget) return
     const app = rescheduleTarget
+    const originalDur = durationMinutes(app)
+    const prof = app.professional || ''
+    // AGENDA FECHADA: remarcação não pode cair num dia fechado nem num horário bloqueado
+    const fechado = compromissoQueFechaDia(appointments, newDate, prof)
+    const inicio = timeToMin(newTime)
+    const bloqueado =
+      !fechado &&
+      compromissoQueBloqueiaHorario(
+        appointments,
+        newDate,
+        inicio,
+        Math.max(timeToMin(addMin(newTime, originalDur)), inicio + 1),
+        prof,
+      )
+    const alvo = fechado || bloqueado
+    if (alvo) {
+      toast({
+        title: fechado ? 'Agenda fechada neste dia' : 'Agenda fechada neste horário',
+        description: `Agenda fechada: ${compromissoTitulo(alvo)}${
+          fechado
+            ? ''
+            : ` (${(alvo.start_time || '').slice(0, 5)}–${(alvo.end_time || '').slice(0, 5)})`
+        }. Escolha outro ${fechado ? 'dia' : 'horário'}.`,
+        variant: 'destructive',
+      })
+      return
+    }
     setRescheduleTarget(null)
     const nowIso = new Date().toISOString()
-    const originalDur = durationMinutes(app)
     const history = [
       ...(app.reschedule_history || []),
       {
@@ -395,16 +438,39 @@ export default function Agenda() {
     }
     const isComp = values.entry_title !== undefined
     // AGENDA FECHADA: consulta (criação ou edição) não pode cair num dia fechado
+    // nem num horário bloqueado por compromisso (dia inteiro ou horário específico).
     if (!isComp) {
-      const fechado = compromissoQueFechaDia(
-        appointments,
-        values.date,
-        values.professional === 'none' ? '' : values.professional || '',
-      )
+      const prof = values.professional === 'none' ? '' : values.professional || ''
+      const fechado = compromissoQueFechaDia(appointments, values.date, prof)
       if (fechado) {
         toast({
           title: 'Agenda fechada neste dia',
           description: `Agenda fechada neste dia: ${compromissoTitulo(fechado)}. Escolha outra data ou reabra o dia editando o compromisso.`,
+          variant: 'destructive',
+        })
+        return
+      }
+      // Só confere bloqueio quando data/horário MUDARAM (editar só observações
+      // de uma consulta que já existia no intervalo não deve ser impedido).
+      const horarioMudou =
+        values.date !== (fresh.date || '').slice(0, 10) ||
+        values.start_time !== fresh.start_time ||
+        values.end_time !== fresh.end_time
+      const editInicio = timeToMin(values.start_time)
+      const editFim = timeToMin(values.end_time)
+      const bloqueado =
+        horarioMudou &&
+        compromissoQueBloqueiaHorario(
+          appointments,
+          values.date,
+          editInicio,
+          Math.max(editFim, editInicio + 1),
+          prof,
+        )
+      if (bloqueado) {
+        toast({
+          title: 'Agenda fechada neste horário',
+          description: `Agenda fechada neste horário: ${compromissoTitulo(bloqueado)} (${(bloqueado.start_time || '').slice(0, 5)}–${(bloqueado.end_time || '').slice(0, 5)}). Escolha outro horário ou edite o compromisso.`,
           variant: 'destructive',
         })
         return
