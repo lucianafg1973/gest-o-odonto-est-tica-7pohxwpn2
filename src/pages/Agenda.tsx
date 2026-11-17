@@ -9,6 +9,8 @@ import {
   AppointmentRecord,
   AppointmentStatus,
   STATUS_LABELS,
+  compromissoQueFechaDia,
+  compromissoTitulo,
 } from '@/services/appointments'
 import { getPatients, PatientRecord } from '@/services/patients'
 import { getProcedures, ProcedureRecord } from '@/services/procedures'
@@ -137,6 +139,21 @@ export default function Agenda() {
     e.preventDefault()
     if (!selectedPatient) {
       toast({ title: 'Selecione um paciente', variant: 'destructive' })
+      return
+    }
+
+    // AGENDA FECHADA: compromisso de dia inteiro neste dia bloqueia novas consultas
+    const fechado = compromissoQueFechaDia(
+      appointments,
+      date,
+      selectedProfessional === 'none' ? '' : selectedProfessional || '',
+    )
+    if (fechado) {
+      toast({
+        title: 'Agenda fechada neste dia',
+        description: `Agenda fechada neste dia: ${compromissoTitulo(fechado)}. Exclua o compromisso ou tire o "dia inteiro" para reabrir.`,
+        variant: 'destructive',
+      })
       return
     }
 
@@ -377,6 +394,22 @@ export default function Agenda() {
       return
     }
     const isComp = values.entry_title !== undefined
+    // AGENDA FECHADA: consulta (criação ou edição) não pode cair num dia fechado
+    if (!isComp) {
+      const fechado = compromissoQueFechaDia(
+        appointments,
+        values.date,
+        values.professional === 'none' ? '' : values.professional || '',
+      )
+      if (fechado) {
+        toast({
+          title: 'Agenda fechada neste dia',
+          description: `Agenda fechada neste dia: ${compromissoTitulo(fechado)}. Escolha outra data ou reabra o dia editando o compromisso.`,
+          variant: 'destructive',
+        })
+        return
+      }
+    }
     try {
       await updateAppointment(appId, {
         ...(isComp

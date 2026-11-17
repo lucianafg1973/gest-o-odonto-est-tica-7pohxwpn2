@@ -146,6 +146,36 @@ export function compromissoTitulo(app: AppointmentRecord): string {
   return (app.entry_title || '').trim() || 'Compromisso'
 }
 
+const FREED_STATUSES: AppointmentStatus[] = [
+  'desmarcado_clinica',
+  'desmarcado_paciente',
+  'remarcou',
+]
+
+/**
+ * COMPROMISSO QUE FECHA O DIA: compromisso interno de DIA INTEIRO e ainda ativo
+ * (não desmarcado/remarcado). Um dia com esse compromisso tem a agenda FECHADA:
+ * sem novos agendamentos e sem faixa "Dia todo" — o compromisso aparece na coluna.
+ * Regra de escopo (igual à grade): compromisso SEM profissional fecha para todos;
+ * COM profissional fecha só para ele.
+ */
+export function compromissoQueFechaDia(
+  appointments: AppointmentRecord[],
+  dateISO: string,
+  professionalId?: string,
+): AppointmentRecord | null {
+  return (
+    appointments.find((a) => {
+      if (!isCompromisso(a) || !a.is_all_day) return false
+      if (FREED_STATUSES.includes(a.status)) return false
+      if ((a.date || '').slice(0, 10) !== dateISO) return false
+      if (professionalId !== undefined && a.professional && a.professional !== professionalId)
+        return false
+      return true
+    }) || null
+  )
+}
+
 /**
  * Calcula o horário de fim a partir do início e da duração (minutos).
  * Duração mínima = slot da grade (30 min); nunca fim ≤ início.

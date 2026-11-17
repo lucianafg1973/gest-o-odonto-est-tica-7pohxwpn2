@@ -7,7 +7,7 @@
  * Expediente comercial vem da coleção `work_schedule` (banco), com fallback 08:00–19:00.
  */
 import { useEffect, useMemo, useState } from 'react'
-import { CalendarDays, ChevronLeft, ChevronRight, Settings2 } from 'lucide-react'
+import { CalendarDays, ChevronLeft, ChevronRight, Lock, Settings2 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import {
   Dialog,
@@ -30,6 +30,7 @@ import {
   STATUS_LABELS,
   isCompromisso,
   compromissoTitulo,
+  compromissoQueFechaDia,
   type AppointmentRecord,
   type AppointmentStatus,
 } from '@/services/appointments'
@@ -278,20 +279,20 @@ export default function CalendarGrid({
   const nCols = period === 'day' ? cols.length : days.length
   const gridCols = `56px repeat(${nCols}, minmax(0,1fr))`
 
-  /** Dia inteiro: dia(s) em exibição com pelo menos um compromisso all-day. */
-  const allDaysShown = period === 'day' ? [cursor] : days
-  const allDayEntries = useMemo(() => {
-    const map = new Map<string, AppointmentRecord[]>()
-    for (const a of appointments) {
-      if (!isCompromisso(a) || !a.is_all_day) continue
-      const k = (a.date || '').slice(0, 10)
-      if (!k) continue
-      const arr = map.get(k)
-      if (arr) arr.push(a)
-      else map.set(k, [a])
+  /** Dias com agenda FECHADA por compromisso de dia inteiro (sem faixa "Dia todo"). */
+  const closures = useMemo(() => {
+    const map = new Map<string, AppointmentRecord>()
+    for (const d of days) {
+      const iso = toISO(d)
+      const c = compromissoQueFechaDia(appointments, iso)
+      if (c) map.set(iso, c)
     }
     return map
-  }, [appointments])
+  }, [appointments, days])
+
+  /** O dia está fechado para ESTA coluna (profissional)? Clínica fecha para todos. */
+  const colFechado = (iso: string, professionalId: string) =>
+    compromissoQueFechaDia(appointments, iso, professionalId)
 
   /** Profissional (id ou nome) → cor pastel — consistente em Dia/Semana/Mês. */
   const pastelFor = (id?: string, name?: string) => professionalPastel(id || name || '')
@@ -384,68 +385,6 @@ export default function CalendarGrid({
         />
       )}
 
-      {/* ============ FAIXA DE DIA INTEIRO (Dia/Semana) ============ */}
-      {period !== 'month' &&
-        allDaysShown.some((d) => (allDayEntries.get(toISO(d)) || []).length > 0) && (
-          <div className="border border-[#EDE3D8] rounded-xl bg-white overflow-hidden">
-            <div className="overflow-x-auto">
-              <div style={{ minWidth: period === 'day' ? Math.max(640, nCols * 170) : 780 }}>
-                <div
-                  className="grid border-b border-[#EDE3D8] bg-[#FAF6F0]"
-                  style={{ gridTemplateColumns: gridCols }}
-                >
-                  <div className="p-2 text-[10px] font-semibold text-[#6B4F42] border-r border-[#EDE3D8]">
-                    Dia todo
-                  </div>
-                  {allDaysShown.map((d) => {
-                    const iso = toISO(d)
-                    const entries = allDayEntries.get(iso) || []
-                    return (
-                      <div
-                        key={iso}
-                        className={cn(
-                          'p-1.5 border-r last:border-r-0 border-[#EDE3D8] space-y-1 min-h-[2.25rem]',
-                          isSameDay(d, today) && 'bg-[#FFF3D6]/60',
-                        )}
-                      >
-                        {entries.map((a) => {
-                          const c = pastelFor(a.professional, a.expand?.professional?.name)
-                          return (
-                            <button
-                              key={a.id}
-                              type="button"
-                              className="w-full text-left rounded border border-dashed px-2 py-1 text-[10px] leading-tight hover:shadow-sm flex items-stretch overflow-hidden"
-                              style={{
-                                backgroundColor: c.bg,
-                                borderColor: c.border,
-                                color: c.text,
-                              }}
-                              onClick={() => setDetail(a)}
-                              title={`${compromissoTitulo(a)} — dia inteiro${
-                                a.expand?.professional?.name
-                                  ? ` — ${a.expand.professional.name}`
-                                  : ''
-                              }`}
-                            >
-                              <span
-                                className="w-1 shrink-0 rounded-full mr-1.5"
-                                style={{ backgroundColor: c.dot }}
-                              />
-                              <span className="truncate font-medium">
-                                {compromissoTitulo(a)} — dia inteiro
-                              </span>
-                            </button>
-                          )
-                        })}
-                      </div>
-                    )
-                  })}
-                </div>
-              </div>
-            </div>
-          </div>
-        )}
-
       {/* ============ VISÃO DIA/SEMANA ============ */}
       {period !== 'month' && (
         <div className="border border-[#EDE3D8] rounded-xl bg-white overflow-hidden">
@@ -471,6 +410,11 @@ export default function CalendarGrid({
                           <p className="text-xs font-semibold text-[#2D1B14] truncate">{p.name}</p>
                           {p.specialty && (
                             <p className="text-[10px] text-[#6B4F42] truncate">{p.specialty}</p>
+                          )}
+                          {closures.get(toISO(cursor)) && (
+                            <p className="text-[10px] font-semibold text-[#8A6A55] flex items-center justify-center gap-1 mt-0.5">
+                              <Lock className="w-3 h-3" /> Fechada
+                            </p>
                           )}
                         </div>
                       )
@@ -504,6 +448,11 @@ export default function CalendarGrid({
                               {n} {n === 1 ? 'consulta' : 'consultas'}
                             </p>
                           )}
+                          {closures.get(iso) && (
+                            <p className="text-[10px] font-semibold text-[#8A6A55] flex items-center justify-center gap-1">
+                              <Lock className="w-3 h-3" /> Fechada
+                            </p>
+                          )}
                         </div>
                       )
                     })}
@@ -535,6 +484,9 @@ export default function CalendarGrid({
                                 professionalId={p.id}
                                 pastel={colPastel}
                                 bucket={bucket}
+                                fechado={colFechado(iso, p.id)}
+                                isFirst={min === slots[0]}
+                                onEditClosed={onEdit}
                                 chips={groupChipsWithClinicCompromissos(
                                   appointments,
                                   iso,
@@ -558,6 +510,9 @@ export default function CalendarGrid({
                                 professionalId=""
                                 pastel={null}
                                 bucket={bucket}
+                                fechado={closures.get(diso) || null}
+                                isFirst={min === slots[0]}
+                                onEditClosed={onEdit}
                                 chips={groupChips(appointments, diso, '', slots, work.end).filter(
                                   (g) => g.row === slots.indexOf(min),
                                 )}
@@ -699,6 +654,9 @@ function SlotCell({
   chips,
   onCreateAt,
   onOpenDetail,
+  fechado,
+  isFirst,
+  onEditClosed,
 }: {
   dateISO: string
   time: string
@@ -709,12 +667,18 @@ function SlotCell({
   chips: { row: number; span: number; apps: AppointmentRecord[] }[]
   onCreateAt: (opts: { date: string; time: string; professionalId: string }) => void
   onOpenDetail: (app: AppointmentRecord) => void
+  /** Agenda FECHADA: compromisso de dia inteiro neste dia (clique abre a edição). */
+  fechado?: AppointmentRecord | null
+  /** Primeira fileira da grade — onde o rótulo do compromisso é mostrado. */
+  isFirst?: boolean
+  onEditClosed?: (app: AppointmentRecord) => void
 }) {
   const apps = bucket || []
   const freed = apps.filter((a) => isSlotFree(a))
   // A célula fica clicável quando NENHUM chip começa nela (chips longos ocupam
   // várias fileiras, mas a célula de origem é a única que abre o "+ agendar").
-  const clickable = chips.length === 0
+  // Com a agenda FECHADA, nenhum horário é clicável.
+  const clickable = chips.length === 0 && !fechado
 
   return (
     <div
@@ -752,6 +716,45 @@ function SlotCell({
         <span className="hidden group-hover:block absolute right-1 top-1 text-[9px] text-[#C66B4D] font-semibold pointer-events-none">
           + agendar
         </span>
+      )}
+      {/* Coluna FECHADA por compromisso de dia inteiro: cobre a célula com hachura;
+         na primeira fileira, o rótulo do compromisso. Clique abre a edição dele. */}
+      {fechado && (
+        <div
+          role="button"
+          tabIndex={0}
+          className="absolute inset-0 z-10 cursor-pointer"
+          style={{
+            backgroundColor: 'rgba(107, 79, 66, 0.05)',
+            backgroundImage:
+              'repeating-linear-gradient(45deg, rgba(107, 79, 66, 0.07) 0 6px, transparent 6px 12px)',
+          }}
+          title={`Agenda fechada neste dia: ${compromissoTitulo(fechado)} — clique para editar`}
+          onClick={(e) => {
+            e.stopPropagation()
+            onEditClosed?.(fechado)
+          }}
+          onKeyDown={(e) => {
+            if (e.key === 'Enter' || e.key === ' ') {
+              e.preventDefault()
+              onEditClosed?.(fechado)
+            }
+          }}
+        >
+          {isFirst && (
+            <span className="m-0.5 flex items-start gap-1 border border-dashed border-[#B08968] rounded-md px-1.5 py-1 bg-[#FAF6F0] hover:shadow-sm">
+              <Lock className="w-3 h-3 mt-0.5 shrink-0 text-[#8A6A55]" />
+              <span className="min-w-0">
+                <span className="block text-[10px] font-semibold leading-tight text-[#2D1B14] truncate">
+                  {compromissoTitulo(fechado)}
+                </span>
+                <span className="block text-[9px] leading-tight text-[#6B4F42]">
+                  Dia inteiro · Agenda fechada
+                </span>
+              </span>
+            </span>
+          )}
+        </div>
       )}
     </div>
   )
