@@ -16,6 +16,36 @@ export const REGIOES = [
   'Boca toda',
 ] as const
 
+/**
+ * Escopos de arcada/hemiarcada — itens planejados para a arcada inteira ou
+ * para um dos hemiarcados, sem dente único (ex.: "protocolo na arcada
+ * superior", "raspagem por hemiarcada"). Valor TEXTUAL persistido no JSON do
+ * tratamento (campo escopoArcada); planos antigos não têm o campo e seguem
+ * funcionando (undefined = item de dente/região comum).
+ * Orientação ANATÔMICA: os quadrantes 1/4 (direita do paciente) aparecem à
+ * ESQUERDA da tela no odontograma FDI e os 2/3 (esquerda do paciente) à
+ * DIREITA — os rótulos seguem o lado do PACIENTE.
+ */
+export const ESCOPOS_ARCADA = [
+  'arcada-superior',
+  'arcada-inferior',
+  'hemiarcada-superior-direita',
+  'hemiarcada-superior-esquerda',
+  'hemiarcada-inferior-direita',
+  'hemiarcada-inferior-esquerda',
+] as const
+export type EscopoArcada = (typeof ESCOPOS_ARCADA)[number]
+
+/** Rótulo legível de cada escopo (lado do PACIENTE, como a clínica fala). */
+export const ESCOPO_ARCADA_LABEL: Record<EscopoArcada, string> = {
+  'arcada-superior': 'Arcada superior completa',
+  'arcada-inferior': 'Arcada inferior completa',
+  'hemiarcada-superior-direita': 'Hemiarcada superior direita',
+  'hemiarcada-superior-esquerda': 'Hemiarcada superior esquerda',
+  'hemiarcada-inferior-direita': 'Hemiarcada inferior direita',
+  'hemiarcada-inferior-esquerda': 'Hemiarcada inferior esquerda',
+}
+
 /** Status do ciclo de vida de um item planejado. */
 export const STATUS_ITEM = ['planejado', 'aprovado', 'executado', 'cancelado'] as const
 export type ItemStatus = (typeof STATUS_ITEM)[number]
@@ -54,6 +84,12 @@ export interface Tratamento {
   tooth: string
   /** Região nomeada quando não é um dente específico. */
   region: string
+  /**
+   * Escopo arcada/hemiarcada quando o item NÃO é de um dente único
+   * (ex.: 'arcada-superior' → rótulo em ESCOPO_ARCADA_LABEL). O rótulo legível
+   * fica também em region, para os documentos/impressões existentes.
+   */
+  escopoArcada?: EscopoArcada
   /** Faces dentárias (M, D, O, V, L, C — mesial, distal, oclusal, vestibular, lingual, cervical). */
   faces: string[]
   /** Preço unitário em reais (persistido; internamente os totais usam centavos). */

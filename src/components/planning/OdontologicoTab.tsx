@@ -15,8 +15,9 @@ import {
 } from 'lucide-react'
 import { ProcedureRecord } from '@/services/procedures'
 import { formatCurrency } from '@/lib/price-calculation'
-import type { Tratamento } from '@/lib/plan-types'
-import { STATUS_LABEL, STATUS_COR } from '@/lib/plan-types'
+import type { Tratamento, EscopoArcada } from '@/lib/plan-types'
+import { STATUS_LABEL, STATUS_COR, ESCOPO_ARCADA_LABEL } from '@/lib/plan-types'
+import { ArcadaButtons } from '@/components/planning/ArcadaButtons'
 import {
   orcamentoCents,
   orcamentoTotal,
@@ -39,6 +40,9 @@ import { createMedicalRecord } from '@/services/medical_records'
  * 2. o botão "Adicionar procedimento" na barra do planejamento reabre o fluxo
  *    antigo (AddProcedureFlow): odontograma de seleção + tabela completa com
  *    busca, faces por linha, valor editável e acúmulo de vários tratamentos.
+ * 3. (novo) 6 BOTÕES de arcada/hemiarcada ao redor do odontograma (3 acima,
+ *    3 abaixo) abrem o MESMO DenteDialog em modo escopo — o procedimento sai
+ *    vinculado à arcada completa ou à hemiarcada (sem dente único).
  * Vários tratamentos por dente coexistem; o total alimenta as condições de
  * pagamento (PaymentInfo) no componente pai.
  *
@@ -91,6 +95,8 @@ export function OdontologicoTab({
 }: Props) {
   const [denticao, setDenticao] = useState<'permanente' | 'decidua'>('permanente')
   const [denteAberto, setDenteAberto] = useState<number | null>(null)
+  /** Escopo de arcada/hemiarcada aberto no DenteDialog (null = modo dente). */
+  const [escopoAberto, setEscopoAberto] = useState<EscopoArcada | null>(null)
   /** Painel antigo "Adicionar procedimento" (odontograma + tabela completa). */
   const [fluxoAberto, setFluxoAberto] = useState(false)
   const [editando, setEditando] = useState<{ t: Tratamento; modo: 'editar' | 'concluir' } | null>(
@@ -162,8 +168,9 @@ export function OdontologicoTab({
         </div>
         <p className="text-[11px] text-[#6B4F42] flex items-center gap-1.5">
           <MousePointerClick className="w-3.5 h-3.5 text-[#C66B4D]" />
-          Clique em um dente para adicionar procedimento, faces, profissional, valor e observações
-          (vários por dente).
+          Clique em um dente para adicionar procedimento por dente (busca pela 1ª letra, faces,
+          profissional, valor e observações) — ou use os botões de arcada/hemiarcada acima e abaixo
+          do odontograma.
         </p>
         <div className="flex flex-wrap items-center gap-2">
           <Button
@@ -176,6 +183,9 @@ export function OdontologicoTab({
             <Plus className="w-3.5 h-3.5 mr-1" /> Adicionar procedimento
           </Button>
         </div>
+
+        {/* Botões de arcada/hemiarcada SUPERIOR — lado do PACIENTE */}
+        <ArcadaButtons posicao="superior" disabled={locked} onEscolher={setEscopoAberto} />
 
         {/* Dentição */}
         <div className="flex flex-wrap items-center gap-2">
@@ -206,17 +216,26 @@ export function OdontologicoTab({
           denticao={denticao}
           locked={locked}
         />
+
+        {/* Botões de arcada/hemiarcada INFERIOR — lado do PACIENTE */}
+        <ArcadaButtons posicao="inferior" disabled={locked} onEscolher={setEscopoAberto} />
       </Card>
 
       {/* ---------- Diálogo ÚNICO do dente ---------- */}
       <DenteDialog
-        open={denteAberto != null}
+        open={denteAberto != null || !!escopoAberto}
         dente={denteAberto}
+        escopo={escopoAberto}
         procedures={procedures}
         profissionais={professionals}
         items={denteItems}
         locked={locked}
-        onOpenChange={(o) => !o && setDenteAberto(null)}
+        onOpenChange={(o) => {
+          if (!o) {
+            setDenteAberto(null)
+            setEscopoAberto(null)
+          }
+        }}
         onAdd={addTratamento}
         onPriceChange={(id, price) => editarCampo(id, { price })}
         onRemoveItem={remover}

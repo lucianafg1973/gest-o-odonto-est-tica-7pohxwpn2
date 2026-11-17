@@ -118,6 +118,7 @@ const mapDentalTratamentos = (recs: TreatmentItemRecord[] | null): Tratamento[] 
       procedureCode: t.procedureCode,
       tooth: r.tooth || '',
       region: r.region || '',
+      escopoArcada: t.escopoArcada,
       faces: r.faces || [],
       price: r.price || 0,
       quantity: t.quantity || 1,

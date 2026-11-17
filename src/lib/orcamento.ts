@@ -62,7 +62,7 @@ export function subtotaisPorArcada(items: OrcamentoItem[]) {
 export function mensagemOrcamento(items: OrcamentoItem[]): string | null {
   const ativos = items.filter((it) => it.status !== 'cancelado')
   if (ativos.length === 0) {
-    return 'Nenhum procedimento adicionado ao planejamento. Selecione dentes no odontograma ou use "Adicionar tratamento" para começar o orçamento.'
+    return 'Nenhum procedimento adicionado ao planejamento. Clique em um dente do odontograma, use os botões de arcada/hemiarcada ao redor dele ou "Adicionar procedimento" para começar o orçamento.'
   }
   const orc = itensOrcamentaveis(ativos)
   if (orc.every((it) => !it.price || it.price <= 0)) {

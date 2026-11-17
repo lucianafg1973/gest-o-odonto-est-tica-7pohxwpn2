@@ -23,8 +23,8 @@ import { getProcedures } from '@/services/procedures'
 import { formatCurrency } from '@/lib/price-calculation'
 import { precoEfetivo, FAMILY_SUGGESTIONS, normalizeSpecialty } from '@/lib/pricing-engine'
 import { ChevronRight, FolderTree, List } from 'lucide-react'
-import type { Tratamento } from '@/lib/plan-types'
-import { tratamentoFromProcedure } from '@/lib/plan-types'
+import type { Tratamento, EscopoArcada } from '@/lib/plan-types'
+import { ESCOPO_ARCADA_LABEL, tratamentoFromProcedure } from '@/lib/plan-types'
 import { FACE_LABEL, facesDeFDI } from '@/lib/tooth-data'
 
 /**
@@ -34,6 +34,11 @@ import { FACE_LABEL, facesDeFDI } from '@/lib/tooth-data'
  * pré-preenchido com o preço da tabela e observações. Sem painéis extras.
  * Cada "Adicionar" cria um registro INDIVIDUAL — vários tratamentos no mesmo
  * dente coexistem, e o subtotal do dente aparece no rodapé.
+ *
+ * Modo ARCADAS/HEMIARCADAS (escopo != null): o mesmo diálogo abre SEM dente
+ * único — o procedimento escolhido é vinculado à arcada completa ou à
+ * hemiarcada (campo escopoArcada + rótulo em region), usado pelos 6 botões
+ * ao redor do odontograma.
  */
 
 /** Ordem canônica de abreviação das faces (ex.: "16 MOD"). */
@@ -46,6 +51,11 @@ interface Props {
   open: boolean
   /** Dente FDI aberto (o diálogo só abre com dente). */
   dente: number | null
+  /**
+   * Escopo arcada/hemiarcada — quando definido, o diálogo funciona SEM dente
+   * único: o item sai vinculado à arcada/hemiarcada clicada.
+   */
+  escopo?: EscopoArcada | null
   procedures: ProcedureRecord[]
   profissionais: { id: string; name: string }[]
   /** Tratamentos JÁ existentes deste dente. */
@@ -63,6 +73,7 @@ interface Props {
 export function DenteDialog({
   open,
   dente,
+  escopo = null,
   procedures,
   profissionais,
   items,
@@ -168,6 +179,7 @@ export function DenteDialog({
     )
   }, [ativos, cascEspec, cascFamilia])
 
+  const rotuloEscopo = escopo ? ESCOPO_ARCADA_LABEL[escopo] : ''
   const facesDoDente = dente != null ? facesDeFDI(dente) : []
 
   const escolherProc = (p: ProcedureRecord) => {
@@ -180,19 +192,39 @@ export function DenteDialog({
     setFaces((prev) => (prev.includes(f) ? prev.filter((x) => x !== f) : [...prev, f]))
 
   const adicionar = () => {
-    if (!procSel || dente == null || locked) return
-    const prof = profissionais.find((p) => p.id === profissionalId)
-    const t = tratamentoFromProcedure(procSel, {
-      tooth: String(dente),
-      region: String(dente),
-      faces: faces.filter((f) => facesDoDente.includes(f)),
-      price: Number(precoStr) || 0,
-      professionalId: profissionalId,
-      professionalName: prof?.name || '',
-      observacoes: observacoes.trim(),
-    })
-    onAdd(t)
-    // Limpa para o próximo item — o dente continua aberto (vários por dente).
+    if (!procSel || locked) return
+    if (escopo) {
+      // Modo arcada/hemiarcada: SEM dente único — escopo textual + rótulo
+      // legível em region (documentos/impressões já mostram region).
+      const prof = profissionais.find((p) => p.id === profissionalId)
+      onAdd(
+        tratamentoFromProcedure(procSel, {
+          tooth: '',
+          region: ESCOPO_ARCADA_LABEL[escopo],
+          escopoArcada: escopo,
+          faces: [],
+          price: Number(precoStr) || 0,
+          professionalId: profissionalId,
+          professionalName: prof?.name || '',
+          observacoes: observacoes.trim(),
+        }),
+      )
+    } else {
+      if (dente == null) return
+      const prof = profissionais.find((p) => p.id === profissionalId)
+      onAdd(
+        tratamentoFromProcedure(procSel, {
+          tooth: String(dente),
+          region: String(dente),
+          faces: faces.filter((f) => facesDoDente.includes(f)),
+          price: Number(precoStr) || 0,
+          professionalId: profissionalId,
+          professionalName: prof?.name || '',
+          observacoes: observacoes.trim(),
+        }),
+      )
+    }
+    // Limpa para o próximo item — o dente/escopo continua aberto (vários por dente).
     setBusca('')
     setBuscaSemAcento('')
     setProcSel(null)
@@ -211,7 +243,7 @@ export function DenteDialog({
       <DialogContent className="max-w-md bg-white border-[#EDE3D8] max-h-[85vh] overflow-y-auto">
         <DialogHeader>
           <DialogTitle className="font-serif-title text-[#2D1B14] flex items-center gap-2">
-            Dente {dente}
+            {escopo ? ESCOPO_ARCADA_LABEL[escopo] : `Dente ${dente}`}
             {faces.length > 0 && (
               <Badge className="bg-[#C66B4D] text-white text-[10px]">
                 {dente}
@@ -220,8 +252,9 @@ export function DenteDialog({
             )}
           </DialogTitle>
           <DialogDescription className="text-xs text-[#6B4F42]">
-            Adicione procedimento, faces, profissional, valor e observações — vários tratamentos
-            convivem no mesmo dente.
+            {escopo
+              ? 'Procedimento planejado para toda a arcada/hemiarcada — sem dente único. Profissional, valor e observações.'
+              : 'Adicione procedimento, faces, profissional, valor e observações — vários tratamentos convivem no mesmo dente.'}
           </DialogDescription>
         </DialogHeader>
 
@@ -400,8 +433,8 @@ export function DenteDialog({
             )}
           </div>
 
-          {/* 2. Faces do dente */}
-          {dente != null && facesDoDente.length > 0 && (
+          {/* 2. Faces do dente — sem faces no modo arcada/hemiarcada */}
+          {!escopo && dente != null && facesDoDente.length > 0 && (
             <div className="space-y-1">
               <Label className="text-xs font-semibold">Faces</Label>
               <div className="flex flex-wrap gap-1">
@@ -533,7 +566,9 @@ export function DenteDialog({
                 </div>
               ))}
               <div className="flex justify-between items-center text-xs pt-1">
-                <span className="text-[#6B4F42]">Subtotal do dente:</span>
+                <span className="text-[#6B4F42]">
+                  {escopo ? 'Subtotal da arcada:' : 'Subtotal do dente:'}
+                </span>
                 <span className="font-bold text-[#C66B4D]">
                   {formatCurrency(subtotalCents / 100)}
                 </span>
