@@ -298,19 +298,38 @@ export default function QuickPatientDialog({
           </div>
 
           <div className="space-y-1">
-            <Label className="text-xs font-semibold">Estado</Label>
-            <Select value={values.estado} onValueChange={(v) => setField('estado', v)}>
-              <SelectTrigger className="w-full bg-white">
-                <SelectValue placeholder="UF" />
-              </SelectTrigger>
-              <SelectContent>
-                {UFS.map((uf) => (
-                  <SelectItem key={uf} value={uf}>
-                    {uf}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
+            <Label className="text-xs font-semibold">Endereço (rua)</Label>
+            <Input
+              value={values.address}
+              onChange={(e) => setField('address', e.target.value)}
+              placeholder="Rua, avenida etc."
+            />
+          </div>
+
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+            <div className="space-y-1">
+              <Label className="text-xs font-semibold">Estado</Label>
+              <Select value={values.estado} onValueChange={(v) => setField('estado', v)}>
+                <SelectTrigger className="w-full bg-white">
+                  <SelectValue placeholder="UF" />
+                </SelectTrigger>
+                <SelectContent>
+                  {UFS.map((uf) => (
+                    <SelectItem key={uf} value={uf}>
+                      {uf}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="space-y-1">
+              <Label className="text-xs font-semibold">Bairro</Label>
+              <Input
+                value={values.bairro}
+                onChange={(e) => setField('bairro', e.target.value)}
+                placeholder="Preenchido pelo CEP ou digite"
+              />
+            </div>
           </div>
 
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
@@ -331,15 +350,6 @@ export default function QuickPatientDialog({
                 placeholder="Apartamento, casa, sobrado etc."
               />
             </div>
-          </div>
-
-          <div className="space-y-1">
-            <Label className="text-xs font-semibold">Endereço Completo</Label>
-            <Input
-              value={values.address}
-              onChange={(e) => setField('address', e.target.value)}
-              placeholder="Rua, número, complemento"
-            />
           </div>
 
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">

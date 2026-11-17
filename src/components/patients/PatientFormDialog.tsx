@@ -527,6 +527,31 @@ export function PatientFormDialog({ open, onOpenChange, patient, onSaved }: Prop
                 inputMode="numeric"
               />
             </div>
+            <div className="space-y-1 sm:col-span-2">
+              <Label className="text-xs font-semibold">Endereço (rua)</Label>
+              <Input
+                value={values.address}
+                onChange={(e) => setField('address', e.target.value)}
+                placeholder="Rua, avenida etc."
+              />
+            </div>
+            <div className="space-y-1">
+              <Label className="text-xs font-semibold">Número</Label>
+              <Input
+                value={values.numero}
+                onChange={(e) => setField('numero', e.target.value)}
+                placeholder="Ex.: 123"
+                inputMode="numeric"
+              />
+            </div>
+            <div className="space-y-1">
+              <Label className="text-xs font-semibold">Complemento</Label>
+              <Input
+                value={values.complemento}
+                onChange={(e) => setField('complemento', e.target.value)}
+                placeholder="Apartamento, casa, sobrado etc."
+              />
+            </div>
             <div className="space-y-1">
               <Label className="text-xs font-semibold">Cidade</Label>
               <Input
@@ -558,32 +583,6 @@ export function PatientFormDialog({ open, onOpenChange, patient, onSaved }: Prop
                 placeholder="Preenchido pelo CEP ou digite"
               />
             </div>
-            <div className="space-y-1">
-              <Label className="text-xs font-semibold">Número</Label>
-              <Input
-                value={values.numero}
-                onChange={(e) => setField('numero', e.target.value)}
-                placeholder="Ex.: 123"
-                inputMode="numeric"
-              />
-            </div>
-            <div className="space-y-1">
-              <Label className="text-xs font-semibold">Complemento</Label>
-              <Input
-                value={values.complemento}
-                onChange={(e) => setField('complemento', e.target.value)}
-                placeholder="Apartamento, casa, sobrado etc."
-              />
-            </div>
-          </div>
-
-          <div className="space-y-1">
-            <Label className="text-xs font-semibold">Endereço Completo</Label>
-            <Input
-              value={values.address}
-              onChange={(e) => setField('address', e.target.value)}
-              placeholder="Rua, número, complemento"
-            />
           </div>
 
           <div className="space-y-1">
