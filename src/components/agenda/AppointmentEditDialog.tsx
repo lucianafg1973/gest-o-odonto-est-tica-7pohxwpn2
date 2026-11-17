@@ -90,6 +90,9 @@ export default function AppointmentEditDialog({
   onDelete?: (id: string) => void
 }) {
   const isComp = appointment?.entry_kind === 'compromisso'
+  // Identidade do agendamento: os campos só são reinicializados quando o DIÁLOGO ABRE
+  // ou o agendamento muda de fato (não a cada recarga da lista com o mesmo registro).
+  const appointmentId = appointment?.id
   const [patient, setPatient] = useState('')
   const [procedure, setProcedure] = useState('')
   const [professional, setProfessional] = useState('')
@@ -117,7 +120,8 @@ export default function AppointmentEditDialog({
       setIsAllDay(!!appointment.is_all_day)
       setError(null)
     }
-  }, [open, appointment])
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [open, appointmentId])
 
   const duration = Math.max(0, timeToMin(endTime) - timeToMin(startTime))
 

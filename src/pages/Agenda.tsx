@@ -315,6 +315,7 @@ export default function Agenda() {
     newDate: string,
     newTime: string,
     reason: string,
+    mover = false,
   ) => {
     const originalDur = durationMinutes(app)
     const prof = app.professional || ''
@@ -357,10 +358,35 @@ export default function Agenda() {
       },
     ]
     try {
+      if (mover) {
+        // Arrastar: o próprio registro passa para o novo horário (aparece fixado no destino e
+        // persiste após recarregar). O histórico de remarcação fica gravado nele.
+        await updateAppointment(app.id, {
+          date: newDate,
+          start_time: newTime,
+          end_time: addMin(newTime, originalDur),
+          reschedule_history: history,
+          status_changed_by: userName,
+          status_changed_at: nowIso,
+        })
+        await createStatusEvent({
+          appointment: app.id,
+          from_status: app.status,
+          to_status: app.status,
+          changed_by: userName,
+          actor_kind: 'sistema',
+          reason: reason || 'Remarcação por arraste',
+        })
+        toast({
+          title: 'Consulta remarcada',
+          description: 'Novo horário gravado; histórico preservado.',
+        })
+        loadData()
+        return
+      }
+      // O original FICA no horário antigo (marcado como remarcou, some da grade e libera o
+      // horário); o novo registro é criado no destino — é ele que aparece fixado no novo slot.
       await updateAppointment(app.id, {
-        date: newDate,
-        start_time: newTime,
-        end_time: addMin(newTime, originalDur),
         status: 'remarcou',
         reschedule_history: history,
         status_changed_by: userName,
@@ -417,7 +443,7 @@ export default function Agenda() {
       })
       return
     }
-    performReschedule(app, newDate, newTime, '')
+    performReschedule(app, newDate, newTime, '', true)
   }
 
   /** Clique num horário livre da grade: abre o formulário de nova consulta já preenchido. */

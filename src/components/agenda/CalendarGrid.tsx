@@ -737,6 +737,7 @@ function SlotCell({
   bloqueado,
   isFirst,
   onEditClosed,
+  onDropAt,
 }: {
   dateISO: string
   time: string
