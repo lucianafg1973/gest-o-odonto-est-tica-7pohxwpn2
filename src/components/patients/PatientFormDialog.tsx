@@ -26,7 +26,7 @@ import {
 } from '@/components/ui/select'
 import { toast } from '@/hooks/use-toast'
 import { CameraCapture } from '@/components/patients/CameraCapture'
-import { buscarCep, maskCep } from '@/lib/viacep'
+import { UFS, buscarCep, maskCep } from '@/lib/viacep'
 
 export function maskCpf(v: string) {
   const d = v.replace(/\D/g, '').slice(0, 11)
@@ -79,6 +79,9 @@ export interface PatientFormValues {
   cep: string
   cidade: string
   bairro: string
+  estado: string
+  numero: string
+  complemento: string
 }
 
 const emptyValues: PatientFormValues = {
@@ -99,6 +102,9 @@ const emptyValues: PatientFormValues = {
   cep: '',
   cidade: '',
   bairro: '',
+  estado: '',
+  numero: '',
+  complemento: '',
 }
 
 function fromPatient(p: PatientRecord): PatientFormValues {
@@ -120,6 +126,9 @@ function fromPatient(p: PatientRecord): PatientFormValues {
     cep: p.cep || '',
     cidade: p.cidade || '',
     bairro: p.bairro || '',
+    estado: p.estado || '',
+    numero: p.numero || '',
+    complemento: p.complemento || '',
   }
 }
 
@@ -213,6 +222,7 @@ export function PatientFormDialog({ open, onOpenChange, patient, onSaved }: Prop
           ...v,
           cidade: v.cidade || res.localidade || current.cidade,
           bairro: v.bairro || res.bairro || current.bairro,
+          estado: v.estado || res.uf || current.estado,
         }
       })
     })
@@ -503,7 +513,7 @@ export function PatientFormDialog({ open, onOpenChange, patient, onSaved }: Prop
             </div>
           </div>
 
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
             <div className="space-y-1">
               <Label className="text-xs font-semibold">CEP</Label>
               <Input
@@ -525,15 +535,46 @@ export function PatientFormDialog({ open, onOpenChange, patient, onSaved }: Prop
                 placeholder="Preenchido pelo CEP ou digite"
               />
             </div>
-          </div>
-
-          <div className="space-y-1">
-            <Label className="text-xs font-semibold">Bairro</Label>
-            <Input
-              value={values.bairro}
-              onChange={(e) => setField('bairro', e.target.value)}
-              placeholder="Preenchido pelo CEP ou digite"
-            />
+            <div className="space-y-1">
+              <Label className="text-xs font-semibold">Estado</Label>
+              <Select value={values.estado} onValueChange={(val) => setField('estado', val)}>
+                <SelectTrigger className="w-full bg-white">
+                  <SelectValue placeholder="UF" />
+                </SelectTrigger>
+                <SelectContent>
+                  {UFS.map((uf) => (
+                    <SelectItem key={uf} value={uf}>
+                      {uf}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="space-y-1">
+              <Label className="text-xs font-semibold">Bairro</Label>
+              <Input
+                value={values.bairro}
+                onChange={(e) => setField('bairro', e.target.value)}
+                placeholder="Preenchido pelo CEP ou digite"
+              />
+            </div>
+            <div className="space-y-1">
+              <Label className="text-xs font-semibold">Número</Label>
+              <Input
+                value={values.numero}
+                onChange={(e) => setField('numero', e.target.value)}
+                placeholder="Ex.: 123"
+                inputMode="numeric"
+              />
+            </div>
+            <div className="space-y-1">
+              <Label className="text-xs font-semibold">Complemento</Label>
+              <Input
+                value={values.complemento}
+                onChange={(e) => setField('complemento', e.target.value)}
+                placeholder="Apartamento, casa, sobrado etc."
+              />
+            </div>
           </div>
 
           <div className="space-y-1">

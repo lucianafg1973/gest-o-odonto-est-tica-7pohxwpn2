@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2026-11-17T01:41:04.192Z",
+  "generatedAt": "2026-11-17T01:47:30.099Z",
   "collections": [
     {
       "name": "users",
@@ -198,6 +198,24 @@
         },
         {
           "name": "bairro",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "estado",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "numero",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "complemento",
           "type": "text",
           "required": false,
           "system": false

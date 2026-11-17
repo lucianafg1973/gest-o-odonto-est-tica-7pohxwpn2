@@ -11,6 +11,9 @@ export interface PatientRecord {
   cep?: string
   cidade?: string
   bairro?: string
+  estado?: string
+  numero?: string
+  complemento?: string
   medical_notes?: string
   photo?: string
   identity_rg?: string

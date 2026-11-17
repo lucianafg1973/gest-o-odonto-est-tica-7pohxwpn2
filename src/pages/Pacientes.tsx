@@ -98,7 +98,9 @@ export default function Pacientes() {
                       )}
                       {(pat.cidade || pat.bairro) && (
                         <span className="hidden lg:inline">
-                          {[pat.bairro, pat.cidade].filter(Boolean).join(' · ')}
+                          {[pat.bairro, pat.cidade, pat.numero && `nº ${pat.numero}`]
+                            .filter(Boolean)
+                            .join(' · ')}
                         </span>
                       )}
                     </div>

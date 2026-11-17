@@ -95,7 +95,10 @@ export default function CadastroTab({ patient, onPatientUpdated }: Props) {
     { label: 'E-mail', value: patient.email },
     { label: 'CEP', value: patient.cep },
     { label: 'Cidade', value: patient.cidade },
+    { label: 'Estado (UF)', value: patient.estado },
     { label: 'Bairro', value: patient.bairro },
+    { label: 'Número', value: patient.numero },
+    { label: 'Complemento', value: patient.complemento },
     { label: 'Endereço', value: patient.address },
     {
       label: 'Como nos conheceu',

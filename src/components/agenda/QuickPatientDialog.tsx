@@ -27,7 +27,7 @@ import {
 import { toast } from '@/hooks/use-toast'
 import { createPatient, PatientRecord } from '@/services/patients'
 import { isValidCpf, maskCpf, maskPhone, onlyDigits } from '@/components/patients/PatientFormDialog'
-import { buscarCep, maskCep } from '@/lib/viacep'
+import { UFS, buscarCep, maskCep } from '@/lib/viacep'
 
 const REFERRAL_SOURCES = [
   { value: 'instagram', label: 'Instagram' },
@@ -57,6 +57,9 @@ export interface QuickPatientValues {
   cep: string
   cidade: string
   bairro: string
+  estado: string
+  numero: string
+  complemento: string
   gender: string
   referral_source: string
   observations: string
@@ -72,6 +75,9 @@ const emptyValues: QuickPatientValues = {
   cep: '',
   cidade: '',
   bairro: '',
+  estado: '',
+  numero: '',
+  complemento: '',
   gender: '',
   referral_source: '',
   observations: '',
@@ -123,6 +129,7 @@ export default function QuickPatientDialog({
           ...v,
           cidade: v.cidade || res.localidade || current.cidade,
           bairro: v.bairro || res.bairro || current.bairro,
+          estado: v.estado || res.uf || current.estado,
         }
       })
     })
@@ -172,6 +179,9 @@ export default function QuickPatientDialog({
         cep: maskCep(values.cep) || undefined,
         cidade: values.cidade.trim() || undefined,
         bairro: values.bairro.trim() || undefined,
+        estado: values.estado.trim() || undefined,
+        numero: values.numero.trim() || undefined,
+        complemento: values.complemento.trim() || undefined,
         gender: (values.gender || undefined) as PatientRecord['gender'],
         referral_source: (values.referral_source || undefined) as PatientRecord['referral_source'],
         medical_notes: values.observations.trim() || undefined,
@@ -266,7 +276,7 @@ export default function QuickPatientDialog({
             </div>
           </div>
 
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
             <div className="space-y-1">
               <Label className="text-xs font-semibold">CEP</Label>
               <Input
@@ -288,12 +298,39 @@ export default function QuickPatientDialog({
           </div>
 
           <div className="space-y-1">
-            <Label className="text-xs font-semibold">Bairro</Label>
-            <Input
-              value={values.bairro}
-              onChange={(e) => setField('bairro', e.target.value)}
-              placeholder="Preenchido pelo CEP ou digite"
-            />
+            <Label className="text-xs font-semibold">Estado</Label>
+            <Select value={values.estado} onValueChange={(v) => setField('estado', v)}>
+              <SelectTrigger className="w-full bg-white">
+                <SelectValue placeholder="UF" />
+              </SelectTrigger>
+              <SelectContent>
+                {UFS.map((uf) => (
+                  <SelectItem key={uf} value={uf}>
+                    {uf}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+            <div className="space-y-1">
+              <Label className="text-xs font-semibold">Número</Label>
+              <Input
+                value={values.numero}
+                onChange={(e) => setField('numero', e.target.value)}
+                placeholder="Ex.: 123"
+                inputMode="numeric"
+              />
+            </div>
+            <div className="space-y-1">
+              <Label className="text-xs font-semibold">Complemento</Label>
+              <Input
+                value={values.complemento}
+                onChange={(e) => setField('complemento', e.target.value)}
+                placeholder="Apartamento, casa, sobrado etc."
+              />
+            </div>
           </div>
 
           <div className="space-y-1">
