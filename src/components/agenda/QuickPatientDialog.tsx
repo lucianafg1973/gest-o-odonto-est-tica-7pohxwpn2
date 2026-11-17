@@ -113,7 +113,7 @@ export default function QuickPatientDialog({
     setErrors((e) => ({ ...e, [k]: '' }))
   }
 
-  // ViaCEP: ao completar 8 dígitos, busca cidade/bairro — sem bloquear o
+  // ViaCEP: ao completar 8 dígitos, busca endereço/cidade/bairro — sem bloquear o
   // preenchimento manual se a API falhar.
   const handleCepChange = (raw: string) => {
     const masked = maskCep(raw)
@@ -127,6 +127,7 @@ export default function QuickPatientDialog({
         if (onlyDigits(v.cep) !== digits) return v
         return {
           ...v,
+          address: v.address || res.logradouro || current.address,
           cidade: v.cidade || res.localidade || current.cidade,
           bairro: v.bairro || res.bairro || current.bairro,
           estado: v.estado || res.uf || current.estado,

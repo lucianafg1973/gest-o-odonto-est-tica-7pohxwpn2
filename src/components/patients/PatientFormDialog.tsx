@@ -204,7 +204,7 @@ export function PatientFormDialog({ open, onOpenChange, patient, onSaved }: Prop
     cep: maskCep(v.cep),
   })
 
-  // ViaCEP: ao completar 8 dígitos, busca cidade/bairro — sem bloquear o
+  // ViaCEP: ao completar 8 dígitos, busca rua/cidade/bairro — sem bloquear o
   // preenchimento manual se a API falhar.
   const handleCepChange = (raw: string) => {
     const masked = maskCep(raw)
@@ -217,9 +217,10 @@ export function PatientFormDialog({ open, onOpenChange, patient, onSaved }: Prop
       // ignora se o CEP mudou enquanto a busca estava em voo
       setValues((v) => {
         if (onlyDigits(v.cep) !== digits) return v
-        setErrors((e) => ({ ...e, cidade: '', bairro: '' }))
+        setErrors((e) => ({ ...e, address: '', cidade: '', bairro: '' }))
         return {
           ...v,
+          address: v.address.trim() || res.logradouro || current.address,
           cidade: v.cidade || res.localidade || current.cidade,
           bairro: v.bairro || res.bairro || current.bairro,
           estado: v.estado || res.uf || current.estado,
