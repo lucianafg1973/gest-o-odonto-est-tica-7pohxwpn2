@@ -12,6 +12,7 @@ import {
   compromissoQueFechaDia,
   compromissoQueBloqueiaHorario,
   compromissoTitulo,
+  isCompromisso,
 } from '@/services/appointments'
 import { getPatients, PatientRecord } from '@/services/patients'
 import { getProcedures, ProcedureRecord } from '@/services/procedures'
