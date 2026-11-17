@@ -69,7 +69,8 @@ const SLOT_MIN = 30
 
 /** Este slot (time) é onde o compromisso de horário COMEÇA? (rótulo só ali). */
 function isBloqueioInicio(app: AppointmentRecord, time: string): boolean {
-  return timeToMin((app.start_time || '').slice(0, 5)) < timeToMin(time) + SLOT_MIN
+  const start = timeToMin((app.start_time || '').slice(0, 5))
+  return start >= timeToMin(time) && start < timeToMin(time) + SLOT_MIN
 }
 
 /** "09:00" → 540 */
