@@ -26,6 +26,7 @@ import {
 } from '@/components/ui/select'
 import { toast } from '@/hooks/use-toast'
 import { CameraCapture } from '@/components/patients/CameraCapture'
+import { buscarCep, maskCep } from '@/lib/viacep'
 
 export function maskCpf(v: string) {
   const d = v.replace(/\D/g, '').slice(0, 11)
@@ -75,6 +76,9 @@ export interface PatientFormValues {
   gender: string
   referral_source: string
   referred_by: string
+  cep: string
+  cidade: string
+  bairro: string
 }
 
 const emptyValues: PatientFormValues = {
@@ -92,6 +96,9 @@ const emptyValues: PatientFormValues = {
   gender: '',
   referral_source: '',
   referred_by: '',
+  cep: '',
+  cidade: '',
+  bairro: '',
 }
 
 function fromPatient(p: PatientRecord): PatientFormValues {
@@ -110,6 +117,9 @@ function fromPatient(p: PatientRecord): PatientFormValues {
     gender: p.gender || '',
     referral_source: p.referral_source || '',
     referred_by: p.referred_by || '',
+    cep: p.cep || '',
+    cidade: p.cidade || '',
+    bairro: p.bairro || '',
   }
 }
 
@@ -182,7 +192,31 @@ export function PatientFormDialog({ open, onOpenChange, patient, onSaved }: Prop
     cpf: maskCpf(v.cpf),
     phone: maskPhone(v.phone),
     email: v.email.trim(),
+    cep: maskCep(v.cep),
   })
+
+  // ViaCEP: ao completar 8 dígitos, busca cidade/bairro — sem bloquear o
+  // preenchimento manual se a API falhar.
+  const handleCepChange = (raw: string) => {
+    const masked = maskCep(raw)
+    setField('cep', masked)
+    const digits = onlyDigits(masked)
+    if (digits.length !== 8) return
+    const current = values
+    buscarCep(digits).then((res) => {
+      if (!res) return
+      // ignora se o CEP mudou enquanto a busca estava em voo
+      setValues((v) => {
+        if (onlyDigits(v.cep) !== digits) return v
+        setErrors((e) => ({ ...e, cidade: '', bairro: '' }))
+        return {
+          ...v,
+          cidade: v.cidade || res.localidade || current.cidade,
+          bairro: v.bairro || res.bairro || current.bairro,
+        }
+      })
+    })
+  }
 
   const validate = async (v: PatientFormValues): Promise<boolean> => {
     const errs: Record<string, string> = {}
@@ -469,12 +503,45 @@ export function PatientFormDialog({ open, onOpenChange, patient, onSaved }: Prop
             </div>
           </div>
 
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+            <div className="space-y-1">
+              <Label className="text-xs font-semibold">CEP</Label>
+              <Input
+                value={values.cep}
+                onChange={(e) => handleCepChange(e.target.value)}
+                onBlur={() => {
+                  // garante o preenchimento também ao colar/digitar fora do onChange
+                  handleCepChange(values.cep)
+                }}
+                placeholder="00000-000"
+                inputMode="numeric"
+              />
+            </div>
+            <div className="space-y-1">
+              <Label className="text-xs font-semibold">Cidade</Label>
+              <Input
+                value={values.cidade}
+                onChange={(e) => setField('cidade', e.target.value)}
+                placeholder="Preenchido pelo CEP ou digite"
+              />
+            </div>
+          </div>
+
+          <div className="space-y-1">
+            <Label className="text-xs font-semibold">Bairro</Label>
+            <Input
+              value={values.bairro}
+              onChange={(e) => setField('bairro', e.target.value)}
+              placeholder="Preenchido pelo CEP ou digite"
+            />
+          </div>
+
           <div className="space-y-1">
             <Label className="text-xs font-semibold">Endereço Completo</Label>
             <Input
               value={values.address}
               onChange={(e) => setField('address', e.target.value)}
-              placeholder="Rua, número, bairro, cidade, estado, CEP"
+              placeholder="Rua, número, complemento"
             />
           </div>
 

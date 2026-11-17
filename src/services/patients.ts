@@ -8,6 +8,9 @@ export interface PatientRecord {
   birth_date?: string
   cpf?: string
   address?: string
+  cep?: string
+  cidade?: string
+  bairro?: string
   medical_notes?: string
   photo?: string
   identity_rg?: string

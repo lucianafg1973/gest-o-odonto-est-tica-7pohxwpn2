@@ -96,6 +96,11 @@ export default function Pacientes() {
                           <Mail className="w-3 h-3 text-[#D4AF37]" /> {pat.email}
                         </span>
                       )}
+                      {(pat.cidade || pat.bairro) && (
+                        <span className="hidden lg:inline">
+                          {[pat.bairro, pat.cidade].filter(Boolean).join(' · ')}
+                        </span>
+                      )}
                     </div>
                   </div>
                 </div>
