@@ -5,6 +5,7 @@
  * - Mês: delegado a MonthView
  * Nova VISUALIZAÇÃO da mesma agenda (coleção appointments) — não cria coleção nova.
  * Expediente comercial vem da coleção `work_schedule` (banco), com fallback 08:00–19:00.
+ * Agendamentos são arrastáveis para outro horário (drop nos slots Dia/Semana).
  */
 import { useEffect, useMemo, useState } from 'react'
 import { CalendarDays, ChevronLeft, ChevronRight, Lock, Settings2 } from 'lucide-react'
@@ -43,6 +44,7 @@ import {
   CATEGORY_STYLES,
   type AppointmentCategory,
 } from '@/lib/appointment-category'
+import { toast } from '@/hooks/use-toast'
 import { cn } from '@/lib/utils'
 
 export type GridPeriod = 'day' | 'week' | 'month'
