@@ -61,7 +61,7 @@ import { PlanDocsSection } from '@/components/documents/PlanDocsSection'
 import { PlanDocSnapshot, DocOptions } from '@/lib/plan-doc'
 import { buildArchiveDocument, parseArchiveMeta, contentComAssinatura } from '@/lib/plan-archive'
 import { useAuth } from '@/hooks/use-auth'
-import PatientAppointmentsHistoryDialog from '@/components/agenda/PatientAppointmentsHistoryDialog'
+import PatientAppointmentsHistorySection from '@/components/agenda/PatientAppointmentsHistorySection'
 import {
   FileText,
   Image as ImageIcon,
@@ -210,7 +210,6 @@ export default function PacienteDetail() {
   const [previewDoc, setPreviewDoc] = useState<DocumentRecord | null>(null)
 
   const [editOpen, setEditOpen] = useState(false)
-  const [histOpen, setHistOpen] = useState(false)
   const [imageToDelete, setImageToDelete] = useState<ImageRecord | null>(null)
   const [hoofTreatments, setHoofTreatments] = useState<PlannedTreatment[]>([])
   const [dentalTreatments, setDentalTreatments] = useState<Tratamento[]>([])
@@ -859,12 +858,6 @@ export default function PacienteDetail() {
 
   return (
     <div className="space-y-6">
-      <PatientAppointmentsHistoryDialog
-        open={histOpen}
-        onOpenChange={setHistOpen}
-        patientId={id || ''}
-        patientName={patientName}
-      />
       <div className="flex items-center gap-3">
         <Button variant="ghost" size="icon" onClick={() => navigate('/pacientes')}>
           <ChevronLeft className="w-5 h-5 text-[#2D1B14]" />
@@ -888,13 +881,6 @@ export default function PacienteDetail() {
           </div>
         </div>
         <div className="ml-auto flex items-center gap-2">
-          <Button
-            variant="outline"
-            className="text-xs font-semibold border-[#EDE3D8] bg-white text-[#2D1B14] hover:bg-[#FAF6F0]"
-            onClick={() => setHistOpen(true)}
-          >
-            <History className="w-4 h-4 mr-1" /> Histórico de agendamentos
-          </Button>
           <Button
             className="btn-terracotta-gold text-xs font-semibold"
             onClick={() => setEditOpen(true)}
@@ -944,6 +930,17 @@ export default function PacienteDetail() {
           </TabsContent>
 
           <TabsContent value="prontuario" className="mt-4 space-y-6">
+            {/* Histórico de agendamentos do paciente: vive no PRONTUÁRIO (marcações,
+                faltas, cancelamentos e remarcações — coleções appointments e
+                appointment_status_events). Dados reais carregados ao entrar na aba. */}
+            {patient && (
+              <PatientAppointmentsHistorySection
+                patientId={id || ''}
+                patientName={patientName}
+                key={id || ''}
+              />
+            )}
+
             <Card className="card-warm">
               <CardHeader className="border-b border-[#EDE3D8] pb-3">
                 <CardTitle className="font-serif-title text-base text-[#2D1B14]">

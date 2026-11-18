@@ -1,18 +1,16 @@
 /**
- * Histórico de agendamentos do paciente (prontuário): todas as marcações,
- * faltas, cancelamentos (com quem/motivo) e remarcações — lendo os dados
- * REAIS das coleções appointments (status, canceled_by/reason,
- * reschedule_history) e appointment_status_events.
+ * Histórico de agendamentos do paciente — Seção EMBUTIDA NO PRONTUÁRIO
+ * (aba "Prontuário" da ficha): todas as marcações, faltas, cancelamentos
+ * (com quem/motivo) e remarcações — lendo os dados REAIS das coleções
+ * appointments (status, canceled_by/reason, reschedule_history) e
+ * appointment_status_events.
+ *
+ * Antes disso (0.0.79–0.0.83) o conteúdo vivia num diálogo aberto por um
+ * botão no cabeçalho da ficha — a usuária pediu que ficasse no PRONTUÁRIO.
  */
 import { useEffect, useState } from 'react'
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogHeader,
-  DialogTitle,
-} from '@/components/ui/dialog'
 import { Badge } from '@/components/ui/badge'
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { CalendarClock, History } from 'lucide-react'
 import pb from '@/lib/pocketbase/client'
 import {
@@ -46,14 +44,14 @@ const fmtDataHora = (iso?: string) => {
 
 const FREED: string[] = ['desmarcado_clinica', 'desmarcado_paciente', 'remarcou']
 
-export default function PatientAppointmentsHistoryDialog({
-  open,
-  onOpenChange,
+/**
+ * Seção embutida no PRONTUÁRIO (aba "Prontuário" da ficha do paciente):
+ * contadores, marcações, faltas, cancelamentos (com quem/motivo) e remarcações.
+ */
+export default function PatientAppointmentsHistorySection({
   patientId,
   patientName,
 }: {
-  open: boolean
-  onOpenChange: (open: boolean) => void
   patientId: string
   patientName: string
 }) {
@@ -63,7 +61,7 @@ export default function PatientAppointmentsHistoryDialog({
   const [erro, setErro] = useState('')
 
   useEffect(() => {
-    if (!open || !patientId) return
+    if (!patientId) return
     let alive = true
     setLoading(true)
     setErro('')
@@ -100,7 +98,7 @@ export default function PatientAppointmentsHistoryDialog({
     return () => {
       alive = false
     }
-  }, [open, patientId])
+  }, [patientId])
 
   const faltas = apps.filter((a) => a.status === 'faltou').length
   const cancelados = apps.filter(
@@ -115,16 +113,16 @@ export default function PatientAppointmentsHistoryDialog({
   }
 
   return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-2xl bg-white border-[#EDE3D8]">
-        <DialogHeader>
-          <DialogTitle className="font-serif-title text-[#2D1B14] flex items-center gap-2">
-            <History className="w-4 h-4 text-[#C66B4D]" /> Histórico de agendamentos
-          </DialogTitle>
-          <DialogDescription className="text-xs text-[#6B4F42]">
-            {patientName} — marcações, faltas, cancelamentos e remarcações.
-          </DialogDescription>
-        </DialogHeader>
+    <Card className="card-warm">
+      <CardHeader className="border-b border-[#EDE3D8] pb-3">
+        <CardTitle className="font-serif-title text-base text-[#2D1B14] flex items-center gap-2">
+          <History className="w-4 h-4 text-[#C66B4D]" /> Histórico de agendamentos
+        </CardTitle>
+      </CardHeader>
+      <CardContent>
+        <p className="text-xs text-[#6B4F42] mb-3">
+          {patientName} — marcações, faltas, cancelamentos e remarcações.
+        </p>
 
         <div className="space-y-3 py-1">
           {!loading && !erro && (
@@ -152,7 +150,7 @@ export default function PatientAppointmentsHistoryDialog({
             </p>
           )}
 
-          <div className="max-h-[55vh] overflow-y-auto space-y-2 pr-1">
+          <div className="space-y-2">
             {apps.map((a) => {
               const evs = eventosPorApp.get(a.id) || []
               const history: RescheduleHistoryEntry[] = a.reschedule_history || []
@@ -231,7 +229,7 @@ export default function PatientAppointmentsHistoryDialog({
             })}
           </div>
         </div>
-      </DialogContent>
-    </Dialog>
+      </CardContent>
+    </Card>
   )
 }

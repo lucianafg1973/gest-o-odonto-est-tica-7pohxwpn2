@@ -30,6 +30,7 @@ import {
 import { Button } from '@/components/ui/button'
 import PatientAutocomplete from '@/components/agenda/PatientAutocomplete'
 import QuickPatientDialog from '@/components/agenda/QuickPatientDialog'
+import { ExternalLink, UserRoundPlus } from 'lucide-react'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import {
   Dialog,
@@ -1073,7 +1074,37 @@ export default function Agenda() {
             ) : (
               <>
                 <div className="space-y-1">
-                  <Label className="text-xs font-semibold">Paciente</Label>
+                  <div className="flex items-center justify-between gap-2">
+                    <Label className="text-xs font-semibold">Paciente</Label>
+                    {/* Cadastro acessível a partir do próprio agendamento: cadastrar
+                        um cliente novo (busca das primeiras letras) ou abrir o
+                        cadastro COMPLETO do selecionado em nova aba — o rascunho do
+                        agendamento (data, hora, profissional, obs) fica preservado
+                        no diálogo, que continua aberto atrás. */}
+                    <div className="flex items-center gap-1">
+                      <button
+                        type="button"
+                        className="text-[10px] px-2 py-0.5 rounded-full border border-[#EDE3D8] bg-[#FAF6F0] text-[#6B4F42] hover:bg-[#FFF3D6] flex items-center gap-1"
+                        onClick={() => {
+                          setQuickPatientName('')
+                          setQuickPatientOpen(true)
+                        }}
+                      >
+                        <UserRoundPlus className="w-3 h-3" /> Novo cliente
+                      </button>
+                      {selectedPatient && (
+                        <a
+                          href={`/pacientes/${selectedPatient}`}
+                          target="_blank"
+                          rel="noreferrer"
+                          className="text-[10px] px-2 py-0.5 rounded-full border border-[#EDE3D8] bg-[#FAF6F0] text-[#6B4F42] hover:bg-[#FFF3D6] flex items-center gap-1"
+                          title="Abrir o cadastro completo do paciente em nova aba"
+                        >
+                          <ExternalLink className="w-3 h-3" /> Abrir cadastro completo
+                        </a>
+                      )}
+                    </div>
+                  </div>
                   <PatientAutocomplete
                     patients={patients}
                     value={patients.find((p) => p.id === selectedPatient) || null}
