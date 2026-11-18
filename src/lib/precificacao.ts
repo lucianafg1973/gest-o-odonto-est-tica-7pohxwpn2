@@ -1,4 +1,3 @@
-import pb from '@/lib/pocketbase/client'
 import { ProcedureRecord } from '@/services/procedures'
 
 /**
@@ -12,19 +11,29 @@ import { ProcedureRecord } from '@/services/procedures'
  * calcularHoraClinica() (src/services/clinical-hour.ts), nunca duplicado.
  * Seção C: lucratividade por procedimento → coleção procedures (existente):
  * cada coluna da planilha "Situação Atual" tem campo próprio (migração
- * 20251115120000: cartão %, comissão %, inadimplência %, material, laboratório,
- * imposto %, outros custos diretos, minutos) — editável aqui, centavos na UI.
+ * 20251115120000: material, laboratório, outros custos diretos, minutos) —
+ * editável por linha, centavos na UI. CARTÃO, COMISSÃO, INADIMPLÊNCIA e
+ * IMPOSTO passaram a ser percentuais GLOBAIS POR COLUNA (coleção
+ * pricing_config, migração 20251117100004 — editáveis no cabeçalho da tabela,
+ * células das linhas calculadas): entram aqui pelo parâmetro `pct`.
  * Painel inteligente: preço sugerido (margem alvo) e desconto máximo
  * (margem mínima) — configuráveis por procedimento, sem tocar o preço oficial.
  */
 
-/** Parâmetros de custo usados na planilha 2 da proprietária. */
+/** Fallback quando a configuração global ainda não foi carregada. */
 export const PCT = {
   cartao: 10,
   comissao: 3,
   inadimplencia: 4,
   imposto: 12,
 } as const
+
+export type PctConfig = {
+  cartao?: number
+  comissao?: number
+  inadimplencia?: number
+  imposto?: number
+}
 
 export interface CustosProcedimento {
   preco: number
@@ -43,15 +52,24 @@ export interface CustosProcedimento {
   margem: number
 }
 
+const pctDe = (v: number | undefined, padrao: number) => {
+  if (v === undefined || v === null) return padrao
+  return Number(v) || 0
+}
+
 /** Linha da planilha "Situação Atual" em centavos (como em payment-calc). */
-export function custosProcedimento(p: ProcedureRecord, custoMinuto: number): CustosProcedimento {
+export function custosProcedimento(
+  p: ProcedureRecord,
+  custoMinuto: number,
+  pct: PctConfig = {},
+): CustosProcedimento {
   const precoC = Math.round((Number(p.price) || 0) * 100)
   const minutos = Number(p.duration_minutes) || 0
   const custoHoraTotalC = Math.round(custoMinuto * minutos * 100)
-  const pctCartao = Number(p.card_fee_percent ?? PCT.cartao) || 0
-  const pctComissao = Number(p.sales_commission_percent ?? PCT.comissao) || 0
-  const pctInad = Number(p.default_percent ?? PCT.inadimplencia) || 0
-  const pctImposto = Number(p.tax_percent ?? PCT.imposto) || 0
+  const pctCartao = pctDe(pct.cartao, PCT.cartao)
+  const pctComissao = pctDe(pct.comissao, PCT.comissao)
+  const pctInad = pctDe(pct.inadimplencia, PCT.inadimplencia)
+  const pctImposto = pctDe(pct.imposto, PCT.imposto)
   const labC = Math.round((Number(p.lab_price) || 0) * 100)
   const matC = Math.round((Number(p.material_cost) || 0) * 100)
   const outrosC = Math.round((Number(p.other_direct_cost) || 0) * 100)
@@ -120,6 +138,8 @@ export function precoSugeridoC(ct: CustosProcedimento, margemAlvo: number): numb
   return fixosC / 100 / denominador
 }
 
+/* Deriva o percentual da coluna a partir dos valores já calculados (R$) da
+ * linha; quando o preço é zero, não há como derivar — usa o global. */
 const pctCartaoDe = (ct: CustosProcedimento) =>
   ct.preco > 0 ? (c(ct.cartao) / c(ct.preco)) * 100 : PCT.cartao
 const pctComissaoDe = (ct: CustosProcedimento) =>

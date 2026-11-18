@@ -16,6 +16,8 @@ import {
   CostItemRecord,
 } from '@/services/clinical-hour'
 import { getProcedures, ProcedureRecord } from '@/services/procedures'
+import { getPricingConfig } from '@/services/pricing-config'
+import { PctConfig, PCT } from '@/lib/precificacao'
 import {
   LayoutDashboard,
   ArrowLeftRight,
@@ -56,6 +58,25 @@ export default function Financial() {
   const [config, setConfig] = useState<ClinicalHourConfig | null>(null)
   const [procedures, setProcedures] = useState<ProcedureRecord[]>([])
   const [loading, setLoading] = useState(true)
+  /* Percentuais globais de cartão/comissão/inadimplência/imposto (pricing_config),
+   * compartilhados pelas duas planilhas da aba Precificação. */
+  const [pct, setPct] = useState<PctConfig>({ ...PCT })
+
+  useEffect(() => {
+    let vivo = true
+    getPricingConfig().then((cfg) => {
+      if (!vivo || !cfg) return
+      setPct({
+        cartao: cfg.card_fee_percent ?? PCT.cartao,
+        comissao: cfg.sales_commission_percent ?? PCT.comissao,
+        inadimplencia: cfg.default_percent ?? PCT.inadimplencia,
+        imposto: cfg.tax_percent ?? PCT.imposto,
+      })
+    })
+    return () => {
+      vivo = false
+    }
+  }, [])
 
   const reload = useCallback(async () => {
     try {
@@ -204,13 +225,17 @@ export default function Financial() {
           <LucratividadeSheet
             procedures={procedures}
             custoMinuto={calculo.minuteCost}
+            pct={pct}
+            onPctChange={setPct}
             onProcedureUpdate={substituirProcedimento}
           />
           <PlanilhaInteligente
             procedures={procedures}
             custoMinuto={calculo.minuteCost}
+            pct={pct}
             onProcedureUpdate={substituirProcedimento}
             onProcedureCreate={adicionarProcedimento}
+            onPctChange={setPct}
           />
         </div>
       )}

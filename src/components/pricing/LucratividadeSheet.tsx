@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useState } from 'react'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
 import { AutoWidthNumberInput } from '@/components/pricing/AutoWidthNumberInput'
@@ -7,7 +7,19 @@ import { Button } from '@/components/ui/button'
 import { updateProcedure } from '@/services/procedures'
 import { ProcedureRecord } from '@/services/procedures'
 import { formatCurrency } from '@/lib/price-calculation'
-import { custosProcedimento, descontoMaximoC, precoSugeridoC } from '@/lib/precificacao'
+import {
+  custosProcedimento,
+  descontoMaximoC,
+  precoSugeridoC,
+  PctConfig,
+  PCT,
+} from '@/lib/precificacao'
+import {
+  ensurePricingConfig,
+  getPricingConfig,
+  updatePricingConfig,
+} from '@/services/pricing-config'
+import { CreditCard, Percent, PiggyBank, Landmark, Loader2 } from 'lucide-react'
 import { InserirProcedimentoDialog } from '@/components/pricing/InserirProcedimentoDialog'
 import { EditableProcedureName } from '@/components/pricing/EditableProcedureName'
 import { Plus } from 'lucide-react'
@@ -15,9 +27,20 @@ import { Plus } from 'lucide-react'
 interface Props {
   procedures: ProcedureRecord[]
   custoMinuto: number
+  /** Percentuais globais por coluna (pricing_config), vivos no pai (Financial). */
+  pct: PctConfig
+  /** Propaga a edição de percentual do cabeçalho para o pai (e para a outra planilha). */
+  onPctChange: (pct: PctConfig) => void
   onProcedureUpdate: (p: ProcedureRecord) => void
   /** Insere um NOVO procedimento no catálogo (botão da planilha inteligente). */
   onProcedureCreate?: (p: ProcedureRecord) => void
+}
+
+const CAMPO_REMOTO: Record<keyof PctConfig, string> = {
+  cartao: 'card_fee_percent',
+  comissao: 'sales_commission_percent',
+  inadimplencia: 'default_percent',
+  imposto: 'tax_percent',
 }
 
 /**
@@ -25,17 +48,40 @@ interface Props {
  * procedimento, coluna a coluna da planilha da proprietária. Cada célula
  * editável grava direto no registro da coleção procedures (o preço OFICIAL só
  * muda quando a proprietária edita a própria coluna Preço — os custos nunca o
- * tocam; cálculo 100% em centavos).
+ * tocam; cálculo 100% em centavos). CARTÃO, COMISSÃO, INADIMPLÊNCIA e IMPOSTO
+ * são percentuais GLOBAIS editáveis no CABEÇALHO da coluna (pricing_config):
+ * as células das linhas mostram o valor em R$ já calculado (read-only).
  */
 export function LucratividadeSheet({
   procedures,
   custoMinuto,
+  pct,
+  onPctChange,
   onProcedureUpdate,
   onProcedureCreate,
 }: Props) {
   const [busca, setBusca] = useState('')
   const [busy, setBusy] = useState<string | null>(null)
   const [inserirOpen, setInserirOpen] = useState(false)
+
+  /* Rascunhos de digitação do cabeçalho e salvamento em curso (spinner). */
+  const [pctRascunho, setPctRascunho] = useState<{ [k in keyof PctConfig]?: string }>({})
+  const [pctSalvando, setPctSalvando] = useState<string | null>(null)
+
+  /** Edita UM percentual no cabeçalho: recalcula na hora e persiste na linha única. */
+  const salvarPct = async (campo: keyof PctConfig, valor: number) => {
+    onPctChange({ ...pct, [campo]: valor })
+    setPctRascunho((prev) => ({ ...prev, [campo]: undefined }))
+    try {
+      const cfg = await ensurePricingConfig()
+      setPctSalvando(campo)
+      await updatePricingConfig(cfg.id, { [CAMPO_REMOTO[campo]]: valor })
+    } catch {
+      /* mantém o valor otimista; recarregar restaura o banco */
+    } finally {
+      setPctSalvando(null)
+    }
+  }
 
   const lista = procedures.filter((p) => p.name?.toLowerCase().includes(busca.trim().toLowerCase()))
 
@@ -73,6 +119,48 @@ export function LucratividadeSheet({
     />
   )
 
+  /** Cabeçalho editável de coluna %: ícone + input pequeno (percentual da COLUNA inteira). */
+  const thPct = (campo: keyof PctConfig, icone: React.ReactNode, label: string) => {
+    const rascunho = pctRascunho[campo]
+    const valor = rascunho !== undefined ? rascunho : String(pct[campo] ?? PCT[campo] ?? 0)
+    return (
+      <th className="py-2 px-2 font-semibold w-16">
+        <div className="flex flex-col items-center gap-1">
+          <span className="flex items-center gap-1">
+            {icone}
+            {label}
+          </span>
+          <div className="flex items-center gap-0.5 relative">
+            <AutoWidthNumberInput
+              min={0}
+              max={100}
+              step="0.01"
+              value={valor}
+              minCh={3}
+              maxCh={5}
+              title={`Percentual de ${label} aplicado a todas as linhas`}
+              className="h-6 text-[11px] text-center bg-white border-[#EDE3D8] rounded-md pr-3.5"
+              onChange={(e) => setPctRascunho((prev) => ({ ...prev, [campo]: e.target.value }))}
+              onBlur={(e) => {
+                const v = Number(e.target.value)
+                if (!Number.isNaN(v) && v !== Number(pct[campo] ?? 0)) salvarPct(campo, v)
+              }}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter') (e.target as HTMLInputElement).blur()
+              }}
+            />
+            <span className="absolute right-2 text-[10px] text-[#6B4F42] pointer-events-none">
+              %
+            </span>
+            {pctSalvando === campo && (
+              <Loader2 className="w-3 h-3 text-[#C66B4D] animate-spin absolute -right-0.5 -top-1" />
+            )}
+          </div>
+        </div>
+      </th>
+    )
+  }
+
   return (
     <Card className="card-warm">
       <CardHeader className="pb-2 flex flex-col sm:flex-row sm:items-center gap-2 justify-between">
@@ -106,12 +194,20 @@ export function LucratividadeSheet({
                 <th className="py-2 px-2 font-semibold w-24">Preço (R$)</th>
                 <th className="py-2 px-2 font-semibold w-16">Minutos</th>
                 <th className="py-2 px-2 font-semibold w-20">Custo hora</th>
-                <th className="py-2 px-2 font-semibold w-16">Cartão %</th>
+                <th className="py-2 px-2 font-semibold w-24">
+                  {thPct('cartao', <CreditCard className="w-3 h-3" />, 'Cartão')}
+                </th>
                 <th className="py-2 px-2 font-semibold w-20">Laboratório</th>
-                <th className="py-2 px-2 font-semibold w-16">Comiss. %</th>
-                <th className="py-2 px-2 font-semibold w-16">Inadimp. %</th>
+                <th className="py-2 px-2 font-semibold w-24">
+                  {thPct('comissao', <PiggyBank className="w-3 h-3" />, 'Comiss.')}
+                </th>
+                <th className="py-2 px-2 font-semibold w-24">
+                  {thPct('inadimplencia', <Percent className="w-3 h-3" />, 'Inadimp.')}
+                </th>
                 <th className="py-2 px-2 font-semibold w-20">Material</th>
-                <th className="py-2 px-2 font-semibold w-16">Imposto %</th>
+                <th className="py-2 px-2 font-semibold w-24">
+                  {thPct('imposto', <Landmark className="w-3 h-3" />, 'Imposto')}
+                </th>
                 <th className="py-2 px-2 font-semibold w-20">Outros custos</th>
                 <th className="py-2 px-2 font-semibold w-24">Custos totais</th>
                 <th className="py-2 px-2 font-semibold w-24">Lucro (R$)</th>
@@ -120,7 +216,7 @@ export function LucratividadeSheet({
             </thead>
             <tbody>
               {lista.map((p) => {
-                const ct = custosProcedimento(p, custoMinuto)
+                const ct = custosProcedimento(p, custoMinuto, pct)
                 const negativo = ct.lucro < 0
                 return (
                   <tr key={p.id} className="border-t border-[#F5EEE6] hover:bg-[#FAF6F0]">
@@ -138,21 +234,22 @@ export function LucratividadeSheet({
                     <td className="py-1 px-2 text-right text-[#6B4F42]">
                       {formatCurrency(ct.custoHoraTotal)}
                     </td>
-                    <td className="py-1 px-1 text-right">
-                      {celulaNum(p, 'card_fee_percent', 'w-16', '%')}
+                    {/* 4 colunas % globais: valor em R$ já calculado (preço × % da coluna), read-only */}
+                    <td className="py-1 px-2 text-right text-[#6B4F42]">
+                      {formatCurrency(ct.cartao)}
                     </td>
                     <td className="py-1 px-1 text-right">{celulaNum(p, 'lab_price', 'w-20')}</td>
-                    <td className="py-1 px-1 text-right">
-                      {celulaNum(p, 'sales_commission_percent', 'w-16', '%')}
+                    <td className="py-1 px-2 text-right text-[#6B4F42]">
+                      {formatCurrency(ct.comissao)}
                     </td>
-                    <td className="py-1 px-1 text-right">
-                      {celulaNum(p, 'default_percent', 'w-16', '%')}
+                    <td className="py-1 px-2 text-right text-[#6B4F42]">
+                      {formatCurrency(ct.inadimplencia)}
                     </td>
                     <td className="py-1 px-1 text-right">
                       {celulaNum(p, 'material_cost', 'w-20')}
                     </td>
-                    <td className="py-1 px-1 text-right">
-                      {celulaNum(p, 'tax_percent', 'w-16', '%')}
+                    <td className="py-1 px-2 text-right text-[#6B4F42]">
+                      {formatCurrency(ct.imposto)}
                     </td>
                     <td className="py-1 px-1 text-right">
                       {celulaNum(p, 'other_direct_cost', 'w-20')}
@@ -218,9 +315,10 @@ export function LucratividadeSheet({
 export function PlanilhaInteligente({
   procedures,
   custoMinuto,
+  pct,
   onProcedureUpdate,
   onProcedureCreate,
-}: Props) {
+}: Props & { pct?: PctConfig }) {
   const [margemAlvoGlobal, setMargemAlvoGlobal] = useState(30)
   const [margemMinGlobal, setMargemMinGlobal] = useState(20)
   const [busca, setBusca] = useState('')
@@ -313,7 +411,7 @@ export function PlanilhaInteligente({
             </thead>
             <tbody>
               {lista.map((p) => {
-                const ct = custosProcedimento(p, custoMinuto)
+                const ct = custosProcedimento(p, custoMinuto, pct)
                 const alvo = p.target_margin_percent ?? margemAlvoGlobal
                 const minimo = p.min_margin_percent ?? margemMinGlobal
                 const sugerido = precoSugeridoC(ct, alvo)
