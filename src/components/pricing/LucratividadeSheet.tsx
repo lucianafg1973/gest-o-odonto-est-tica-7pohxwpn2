@@ -9,6 +9,7 @@ import { ProcedureRecord } from '@/services/procedures'
 import { formatCurrency } from '@/lib/price-calculation'
 import { custosProcedimento, descontoMaximoC, precoSugeridoC } from '@/lib/precificacao'
 import { InserirProcedimentoDialog } from '@/components/pricing/InserirProcedimentoDialog'
+import { EditableProcedureName } from '@/components/pricing/EditableProcedureName'
 import { Plus } from 'lucide-react'
 
 interface Props {
@@ -123,7 +124,13 @@ export function LucratividadeSheet({
                 const negativo = ct.lucro < 0
                 return (
                   <tr key={p.id} className="border-t border-[#F5EEE6] hover:bg-[#FAF6F0]">
-                    <td className="py-1 px-2 font-medium text-[#2D1B14]">{p.name}</td>
+                    <td className="py-1 px-2">
+                      <EditableProcedureName
+                        procedure={p}
+                        busy={busy === p.id}
+                        onSave={(patch) => salvar(p, patch)}
+                      />
+                    </td>
                     <td className="py-1 px-1 text-right">{celulaNum(p, 'price', 'w-24')}</td>
                     <td className="py-1 px-1 text-right">
                       {celulaNum(p, 'duration_minutes', 'w-16', '%')}
