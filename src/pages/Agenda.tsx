@@ -138,11 +138,15 @@ export default function Agenda() {
   const userName = user?.name || user?.email || 'Usuário'
   const todayBirthdays = useMemo(() => countTodayBirthdays(patients), [patients])
 
-  const handleCreateAppointment = async (e: React.FormEvent) => {
-    e.preventDefault()
-    if (!selectedPatient) {
+  /** Cria a consulta com os dados correntes do diálogo (data, horários, profissional,
+   * procedimento e observações já preenchidos). Usada tanto pelo botão "Confirmar
+   * Agendamento" quanto pelo salvamento do mini-cadastro de cliente novo — que, ao
+   * salvar, já agenda automaticamente no horário clicado, sem clique extra.
+   * Retorna true quando o agendamento foi criado (e o diálogo foi fechado). */
+  const persistConsulta = async (patientId: string): Promise<boolean> => {
+    if (!patientId) {
       toast({ title: 'Selecione um paciente', variant: 'destructive' })
-      return
+      return false
     }
 
     // AGENDA FECHADA: compromisso de dia inteiro neste dia bloqueia novas consultas
@@ -154,7 +158,7 @@ export default function Agenda() {
         description: `Agenda fechada neste dia: ${compromissoTitulo(fechado)}. Exclua o compromisso ou tire o "dia inteiro" para reabrir.`,
         variant: 'destructive',
       })
-      return
+      return false
     }
 
     // HORÁRIO BLOQUEADO: compromisso com horário específico cobre o intervalo da consulta
@@ -173,22 +177,22 @@ export default function Agenda() {
         description: `Agenda fechada neste horário: ${compromissoTitulo(bloqueado)} (${(bloqueado.start_time || '').slice(0, 5)}–${(bloqueado.end_time || '').slice(0, 5)}). Escolha outro horário ou edite o compromisso.`,
         variant: 'destructive',
       })
-      return
+      return false
     }
 
     // evitar duplicidade de horários (horários liberados por desmarcação podem ser reutilizados)
-    if (hasActiveAppointmentAt(appointments, selectedPatient, date, startTime)) {
+    if (hasActiveAppointmentAt(appointments, patientId, date, startTime)) {
       toast({
         title: 'Horário ocupado',
         description: 'Este paciente já possui um agendamento ativo nessa data e horário.',
         variant: 'destructive',
       })
-      return
+      return false
     }
 
     try {
       await createAppointment({
-        patient: selectedPatient,
+        patient: patientId,
         procedure: selectedProcedure || undefined,
         professional: selectedProfessional || undefined,
         date,
@@ -197,12 +201,17 @@ export default function Agenda() {
         status: 'agendado',
         notes,
       })
-      toast({ title: 'Consulta agendada!', description: 'Cadastrada com sucesso no sistema.' })
+      toast({
+        title: 'Consulta agendada!',
+        description: 'Cadastrada com sucesso no sistema.',
+      })
       setOpenModal(false)
       setPendingSlot(null)
       loadData()
+      return true
     } catch (_) {
       toast({ title: 'Erro ao agendar', variant: 'destructive' })
+      return false
     }
   }
 
@@ -967,7 +976,7 @@ export default function Agenda() {
             onSubmit={(e) => {
               e.preventDefault()
               if (entryKind === 'compromisso') handleCreateCompromisso()
-              else handleCreateAppointment(e)
+              else void persistConsulta(selectedPatient)
             }}
             className="space-y-4 py-2"
           >
@@ -1243,13 +1252,17 @@ export default function Agenda() {
         open={quickPatientOpen}
         onOpenChange={setQuickPatientOpen}
         initialName={quickPatientName}
-        onCreated={(p) => {
+        onCreated={async (p) => {
           setPatients((prev) =>
             prev.some((x) => x.id === p.id)
               ? prev
               : [...prev, p].sort((a, b) => a.name.localeCompare(b.name)),
           )
-          setSelectedPatient(p.id)
+          // Cadastro + agendamento num único passo: ao salvar o mini-cadastro,
+          // a consulta já é criada no horário clicado (dados correntes do diálogo)
+          // e o diálogo de agendamento fecha — sem clique extra de confirmação.
+          const ok = await persistConsulta(p.id)
+          if (!ok) setSelectedPatient(p.id)
         }}
       />
     </div>
